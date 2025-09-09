@@ -120,19 +120,22 @@ O projeto usa Supabase Auth com:
 ### Comandos úteis:
 ```bash
 # Status do projeto
-npx supabase status
+supabase status
 
 # Linkar projeto remoto
-npx supabase link --project-ref SEU_PROJECT_REF
+supabase link --project-ref SEU_PROJECT_REF
+
+# Nova Edge Functions
+supabase functions new FUNCTION
 
 # Aplicar migrations
-npx supabase db push
+supabase db push
 
 # Deploy das Edge Functions
-npx supabase functions deploy users
+supabase functions deploy users
 
 # Reset do banco (apenas para projetos locais)
-npx supabase db reset
+supabase db reset
 ```
 
 ### Variáveis de ambiente necessárias:
@@ -150,7 +153,7 @@ SUPABASE_SERVICE_ROLE_KEY=sua_chave_de_servico
 
 ### Swagger
 
-``` sh
+``` bash
 npm run swagger:serve
 ```
 
