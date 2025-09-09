@@ -1,0 +1,875 @@
+openapi: 3.0.3
+info:
+  title: Supabase Users API
+  description:
+    API para gerenciamento de usuários com controle de permissões (staff
+    vs usuários normais)
+  version: 1.0.0
+  contact:
+    name: Supabase Backend
+    url: https://supabase.com
+servers:
+  - url: https://hlcjecnmvqjabammbdly.supabase.co/functions/v1
+    description: Production server
+
+paths:
+  /auth/me:
+    get:
+      tags: [Auth]
+      summary: Obter dados do usuário logado
+      description: Retorna os dados de autenticação do Supabase Auth e o perfil completo da tabela users
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Dados do usuário logado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthMeResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Login do usuário
+      description: Realiza login com email e senha, retornando tokens de acesso e dados do usuário
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AuthLoginRequest"
+      responses:
+        "200":
+          description: Login realizado com sucesso
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthLoginResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+  /users:
+    get:
+      tags: [Users]
+      summary: Buscar perfil(s) de usuário
+      description: "- **Usuários normais**: Retorna apenas seu próprio perfil
+
+        - **Staff**: Retorna todos os usuários
+
+        "
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Sucesso
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/UsersListResponse"
+                  - $ref: "#/components/schemas/UserProfileResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+    post:
+      tags: [Users]
+      summary: Criar usuário ou atualizar perfil
+      description:
+        "- **Usuários normais**: Podem criar/atualizar apenas seu próprio
+        perfil
+
+        - **Staff**: Podem criar novos usuários (com email/senha) ou atualizar perfis
+        existentes
+
+        - **Segurança**: Campo `is_staff` não pode ser alterado via esta API
+
+        - **Criação de usuário**: Staff pode criar usuários com email/senha no Supabase
+        Auth
+
+        - **Registro de novos usuários**: Não requer autenticação (permite criação
+        de contas)
+
+        "
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserProfileInput"
+      responses:
+        "200":
+          description: Usuário criado ou perfil atualizado com sucesso
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserCreateResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+    put:
+      tags: [Users]
+      summary: Atualizar perfil de usuário
+      description: "Atualiza um perfil existente.
+
+        - **Usuários normais**: Podem atualizar apenas seu próprio perfil
+
+        - **Staff**: Podem atualizar qualquer perfil
+
+        - **Segurança**: Campo `is_staff` não pode ser alterado via esta API
+
+        "
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserProfileUpdateInput"
+      responses:
+        "200":
+          description: Perfil atualizado com sucesso
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserProfile"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+  /admin:
+    post:
+      tags: [Admin]
+      summary: Executa ações relacionadas ao usuário autenticado
+      description:
+        '- `action: "me"` retorna dados do usuário e seu perfil (`users`).
+
+        - `action: "change_staff"` altera o `is_staff` de um usuário alvo (somente
+        staff).
+
+        - `action: "login"` loga um usuário com email/senha (não requer autenticação).
+
+        '
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - $ref: "#/components/schemas/MeRequest"
+                - $ref: "#/components/schemas/ChangeStaffRequest"
+                - $ref: "#/components/schemas/LoginRequest"
+            examples:
+              me:
+                summary: Obter usuário logado
+                value:
+                  action: me
+              change_staff:
+                summary: Alterar is_staff de outro usuário
+                value:
+                  action: change_staff
+                  target_user_id: 00000000-0000-0000-0000-000000000000
+                  is_staff: true
+              login:
+                summary: Loga usaurio
+                value:
+                  action: login
+                  email: xxx@xxx.com
+                  password: xxxxxxx
+      responses:
+        "200":
+          description: Sucesso
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/MeResponse"
+                  - $ref: "#/components/schemas/AuthStaffResponse"
+                  - $ref: "#/components/schemas/ChangeStaffResponse"
+        "400":
+          description: Erro de requisição (parâmetros inválidos ou ação inválida)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Não autorizado (token ausente ou inválido)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Proibido (sem permissão de staff)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "405":
+          description: Método não permitido
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT token do Supabase Auth
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    AuthLoginRequest:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+          description: Email do usuário
+        password:
+          type: string
+          description: Senha do usuário
+      required:
+        - email
+        - password
+    AuthLoginResponse:
+      type: object
+      properties:
+        token_type:
+          type: string
+          description: Tipo do token (geralmente "bearer")
+        access_token:
+          type: string
+          description: Token de acesso JWT
+        refresh_token:
+          type: string
+          description: Token de refresh
+        expires_in:
+          type: integer
+          description: Tempo de expiração em segundos
+        user:
+          $ref: "#/components/schemas/AuthUser"
+        profile:
+          $ref: "#/components/schemas/UserProfile"
+    AuthUser:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: ID único do usuário
+        email:
+          type: string
+          format: email
+          description: Email do usuário
+        phone:
+          type: string
+          nullable: true
+          description: Telefone do usuário
+        app_metadata:
+          type: object
+          additionalProperties: true
+          description: Metadados da aplicação
+        user_metadata:
+          type: object
+          additionalProperties: true
+          description: Metadados do usuário
+        role:
+          type: string
+          nullable: true
+          description: Role do usuário
+        created_at:
+          type: string
+          format: date-time
+          description: Data de criação
+        updated_at:
+          type: string
+          format: date-time
+          description: Data da última atualização
+        email_confirmed_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: Data de confirmação do email
+        phone_confirmed_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: Data de confirmação do telefone
+        last_sign_in_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: Data do último login
+        confirmed_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: Data de confirmação da conta
+        recovery_sent_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: Data de envio do email de recuperação
+        new_email:
+          type: string
+          nullable: true
+          description: Novo email pendente de confirmação
+        new_phone:
+          type: string
+          nullable: true
+          description: Novo telefone pendente de confirmação
+        invited_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: Data do convite
+        action_link:
+          type: string
+          nullable: true
+          description: Link de ação
+        email_change_sent_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: Data de envio do email de mudança
+        new_email_change_sent_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: Data de envio do novo email de mudança
+        phone_change_sent_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: Data de envio do telefone de mudança
+        new_phone_change_sent_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: Data de envio do novo telefone de mudança
+        reauthentication_sent_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: Data de envio da reautenticação
+        reauthentication_token:
+          type: string
+          nullable: true
+          description: Token de reautenticação
+        is_sso_user:
+          type: boolean
+          description: Se é usuário SSO
+        deleted_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: Data de exclusão
+        is_anonymous:
+          type: boolean
+          description: Se é usuário anônimo
+    AuthMeResponse:
+      type: object
+      properties:
+        user:
+          $ref: "#/components/schemas/AuthUser"
+        profile:
+          $ref: "#/components/schemas/UserProfile"
+    UserProfile:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: ID único do usuário
+        email:
+          type: string
+          format: email
+          description: Email do usuário
+        full_name:
+          type: string
+          description: Nome completo
+        username:
+          type: string
+          description: Nome de usuário único
+        avatar_url:
+          type: string
+          format: uri
+          description: URL do avatar
+        bio:
+          type: string
+          description: Biografia do usuário
+        phone:
+          type: string
+          description: Número de telefone
+        date_of_birth:
+          type: string
+          format: date
+          description: Data de nascimento
+        location:
+          type: string
+          description: Localização
+        website:
+          type: string
+          format: uri
+          description: Website pessoal
+        is_staff:
+          type: boolean
+          description: Se o usuário tem privilégios de staff (somente leitura)
+        is_verified:
+          type: boolean
+          description: Se o email foi verificado
+        is_active:
+          type: boolean
+          description: Se a conta está ativa
+        last_login:
+          type: string
+          format: date-time
+          description: Último login
+        preferences:
+          type: object
+          description: Preferências do usuário em formato JSON
+        created_at:
+          type: string
+          format: date-time
+          description: Data de criação
+        updated_at:
+          type: string
+          format: date-time
+          description: Data da última atualização
+      required:
+        - id
+        - email
+        - full_name
+    UserProfileInput:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+          description: Email do usuário (apenas para staff criando novos usuários)
+        password:
+          type: string
+          description: Senha do usuário (apenas para staff criando novos usuários)
+        full_name:
+          type: string
+          description: Nome completo
+        username:
+          type: string
+          description: Nome de usuário único
+        avatar_url:
+          type: string
+          format: uri
+          description: URL do avatar
+        bio:
+          type: string
+          description: Biografia do usuário
+        phone:
+          type: string
+          description: Número de telefone
+        date_of_birth:
+          type: string
+          format: date
+          description: Data de nascimento
+        location:
+          type: string
+          description: Localização
+        website:
+          type: string
+          format: uri
+          description: Website pessoal
+        preferences:
+          type: object
+          description: Preferências do usuário em formato JSON
+      required:
+        - full_name
+    UserProfileUpdateInput:
+      allOf:
+        - $ref: "#/components/schemas/UserProfileInput"
+        - type: object
+          properties:
+            id:
+              type: string
+              format: uuid
+              description:
+                ID do usuário a ser atualizado (staff pode especificar, usuários
+                normais não podem)
+    UserCreateResponse:
+      type: object
+      properties:
+        message:
+          type: string
+          description: Mensagem de confirmação
+          example: User created successfully
+        user:
+          $ref: "#/components/schemas/UserProfile"
+    StaffUpdateInput:
+      type: object
+      properties:
+        user_id:
+          type: string
+          format: uuid
+          description: ID do usuário cujo status de staff será alterado
+        is_staff:
+          type: boolean
+          description: Novo status de staff (true = staff, false = usuário normal)
+      required:
+        - user_id
+        - is_staff
+    StaffUpdateResponse:
+      type: object
+      properties:
+        message:
+          type: string
+          description: Mensagem de confirmação
+          example: User joao@exemplo.com staff status updated to true
+        user:
+          type: object
+          properties:
+            id:
+              type: string
+              format: uuid
+            email:
+              type: string
+            full_name:
+              type: string
+            is_staff:
+              type: boolean
+            updated_at:
+              type: string
+              format: date-time
+    UsersListResponse:
+      type: object
+      properties:
+        users:
+          type: array
+          items:
+            $ref: "#/components/schemas/UserProfile"
+        is_staff:
+          type: boolean
+          example: true
+          description: Indica que o usuário logado é staff
+    UserProfileResponse:
+      type: object
+      properties:
+        user:
+          $ref: "#/components/schemas/UserProfile"
+        is_staff:
+          type: boolean
+          example: false
+          description: Indica que o usuário logado não é staff
+    AdminUsersListResponse:
+      type: object
+      properties:
+        users:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+                format: uuid
+              email:
+                type: string
+              full_name:
+                type: string
+              username:
+                type: string
+              is_staff:
+                type: boolean
+              is_active:
+                type: boolean
+              created_at:
+                type: string
+                format: date-time
+              updated_at:
+                type: string
+                format: date-time
+        total:
+          type: integer
+          description: Total de usuários
+        staff_count:
+          type: integer
+          description: Total de usuários staff
+    MeRequest:
+      type: object
+      properties:
+        action:
+          type: string
+          const: me
+      required:
+        - action
+    ChangeStaffRequest:
+      type: object
+      properties:
+        action:
+          type: string
+          const: change_staff
+        target_user_id:
+          type: string
+          format: uuid
+        is_staff:
+          type: boolean
+      required:
+        - action
+        - target_user_id
+        - is_staff
+    LoginRequest:
+      type: object
+      properties:
+        action:
+          type: string
+          const: login
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+      required:
+        - action
+        - email
+        - password
+    MeResponse:
+      type: object
+      properties:
+        user:
+          type: object
+          properties:
+            id:
+              type: string
+              format: uuid
+            email:
+              type: string
+              format: email
+            phone:
+              type:
+                - string
+                - "null"
+            role:
+              type:
+                - string
+                - "null"
+            app_metadata:
+              type: object
+              additionalProperties: true
+            user_metadata:
+              type: object
+              additionalProperties: true
+            created_at:
+              type: string
+              format: date-time
+            updated_at:
+              type:
+                - string
+                - "null"
+              format: date-time
+        profile:
+          type: object
+          additionalProperties: true
+    ChangeStaffResponse:
+      type: object
+      properties:
+        message:
+          type: string
+        target:
+          type: object
+          properties:
+            id:
+              type: string
+              format: uuid
+            is_staff:
+              type: boolean
+    LoginResponse:
+      type: object
+      properties:
+        message:
+          type: string
+        target:
+          type: object
+          properties:
+            id:
+              type: string
+              format: uuid
+            is_staff:
+              type: boolean
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+    x-merged-alt-MeRequest:
+      type: object
+      properties:
+        action:
+          type: string
+          const: me
+      required:
+        - action
+    x-merged-alt-ChangeStaffRequest:
+      type: object
+      properties:
+        action:
+          type: string
+          const: change_staff
+        target_user_id:
+          type: string
+          format: uuid
+        is_staff:
+          type: boolean
+      required:
+        - action
+        - target_user_id
+        - is_staff
+    x-merged-alt-LoginRequest:
+      type: object
+      properties:
+        action:
+          type: string
+          const: login
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+      required:
+        - action
+        - email
+        - password
+    x-merged-alt-MeResponse:
+      type: object
+      properties:
+        user:
+          type: object
+          properties:
+            id:
+              type: string
+              format: uuid
+            email:
+              type: string
+              format: email
+            phone:
+              type:
+                - string
+                - "null"
+            role:
+              type:
+                - string
+                - "null"
+            app_metadata:
+              type: object
+              additionalProperties: true
+            user_metadata:
+              type: object
+              additionalProperties: true
+            created_at:
+              type: string
+              format: date-time
+            updated_at:
+              type:
+                - string
+                - "null"
+              format: date-time
+        profile:
+          type: object
+          additionalProperties: true
+    AuthStaffResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        is_staff:
+          type: boolean
+    x-merged-alt-ChangeStaffResponse:
+      type: object
+      properties:
+        message:
+          type: string
+        target:
+          type: object
+          properties:
+            id:
+              type: string
+              format: uuid
+            is_staff:
+              type: boolean
+    x-merged-alt-ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+  responses:
+    Unauthorized:
+      description: Token de autenticação inválido ou ausente
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+                example: Unauthorized
+    Forbidden:
+      description: Usuário não tem permissão para executar esta ação
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+                example: Insufficient permissions
+    BadRequest:
+      description: Requisição inválida
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+                example: Invalid request data
+    InternalServerError:
+      description: Erro interno do servidor
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+                example: Internal server error
+tags:
+  - name: Auth
+    description: Operações de autenticação (login, dados do usuário logado)
+  - name: Users
+    description: Operações relacionadas a usuários (perfis, criação, atualização)
+  - name: Admin
+    description: Operações administrativas (gerenciamento de staff)

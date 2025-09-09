@@ -1,0 +1,27 @@
+{
+  "name": "supabase-backend",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "supabase:start": "supabase start",
+    "supabase:stop": "supabase stop",
+    "supabase:status": "supabase status",
+    "supabase:functions:serve": "supabase functions serve",
+    "supabase:functions:deploy": "supabase functions deploy",
+    "supabase:db:reset": "supabase db reset",
+    "supabase:db:push": "supabase db push",
+    "supabase:db:diff": "supabase db diff",
+    "swagger:serve": "node swagger-server.js",
+    "swagger:dev": "nodemon swagger-server.js"
+  },
+  "devDependencies": {
+    "supabase": "^1.127.0",
+    "typescript": "^5",
+    "@types/node": "^20"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "swagger-ui-express": "^5.0.0",
+    "js-yaml": "^4.1.0"
+  }
+}

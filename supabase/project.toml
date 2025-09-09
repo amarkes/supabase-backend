@@ -1,0 +1,7 @@
+# Configuração do projeto Supabase
+# Este arquivo é criado automaticamente quando você linka um projeto
+
+project_id = "seu-project-ref"
+project_name = "Seu Nome do Projeto"
+organization_id = "sua-organization-id"
+
