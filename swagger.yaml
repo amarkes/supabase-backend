@@ -1,9 +1,7 @@
 openapi: 3.0.3
 info:
-  title: Supabase Users API
-  description:
-    API para gerenciamento de usuários com controle de permissões (staff
-    vs usuários normais)
+  title: Supabase Backend API
+  description: API para gerenciamento de usuarios e controle de caixa pessoal
   version: 1.0.0
   contact:
     name: Supabase Backend
@@ -16,13 +14,13 @@ paths:
   /auth/me:
     get:
       tags: [Auth]
-      summary: Obter dados do usuário logado
-      description: Retorna os dados de autenticação do Supabase Auth e o perfil completo da tabela users
+      summary: Obter dados do usuario logado
+      description: Retorna os dados de autenticacao do Supabase Auth e o perfil completo da tabela users
       security:
         - BearerAuth: []
       responses:
         "200":
-          description: Dados do usuário logado
+          description: Dados do usuario logado
           content:
             application/json:
               schema:
@@ -33,11 +31,12 @@ paths:
           $ref: "#/components/responses/BadRequest"
         "500":
           $ref: "#/components/responses/InternalServerError"
+
   /auth/login:
     post:
       tags: [Auth]
-      summary: Login do usuário
-      description: Realiza login com email e senha, retornando tokens de acesso e dados do usuário
+      summary: Login do usuario
+      description: Realiza login com email e senha, retornando tokens de acesso e dados do usuario
       security: []
       requestBody:
         required: true
@@ -58,183 +57,246 @@ paths:
           $ref: "#/components/responses/BadRequest"
         "500":
           $ref: "#/components/responses/InternalServerError"
-  /users:
+
+  /cashflow/categories:
     get:
-      tags: [Users]
-      summary: Buscar perfil(s) de usuário
-      description: "- **Usuários normais**: Retorna apenas seu próprio perfil
-
-        - **Staff**: Retorna todos os usuários
-
-        "
+      tags: [Cashflow]
+      summary: Listar categorias
+      description: Retorna todas as categorias do usuario logado. Cada usuario so pode ver suas proprias categorias.
       security:
         - BearerAuth: []
       responses:
         "200":
-          description: Sucesso
+          description: Lista de categorias do usuario
           content:
             application/json:
               schema:
-                oneOf:
-                  - $ref: "#/components/schemas/UsersListResponse"
-                  - $ref: "#/components/schemas/UserProfileResponse"
+                $ref: "#/components/schemas/CategoriesResponse"
         "401":
           $ref: "#/components/responses/Unauthorized"
-        "400":
-          $ref: "#/components/responses/BadRequest"
         "500":
           $ref: "#/components/responses/InternalServerError"
     post:
-      tags: [Users]
-      summary: Criar usuário ou atualizar perfil
-      description:
-        "- **Usuários normais**: Podem criar/atualizar apenas seu próprio
-        perfil
-
-        - **Staff**: Podem criar novos usuários (com email/senha) ou atualizar perfis
-        existentes
-
-        - **Segurança**: Campo `is_staff` não pode ser alterado via esta API
-
-        - **Criação de usuário**: Staff pode criar usuários com email/senha no Supabase
-        Auth
-
-        - **Registro de novos usuários**: Não requer autenticação (permite criação
-        de contas)
-
-        "
-      security: []
+      tags: [Cashflow]
+      summary: Criar categoria
+      description: Cria uma nova categoria para receitas ou despesas. A categoria sera associada ao usuario logado.
+      security:
+        - BearerAuth: []
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/UserProfileInput"
+              $ref: "#/components/schemas/CategoryInput"
       responses:
         "200":
-          description: Usuário criado ou perfil atualizado com sucesso
+          description: Categoria criada com sucesso
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/UserCreateResponse"
+                $ref: "#/components/schemas/CategoryResponse"
         "401":
           $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
         "400":
           $ref: "#/components/responses/BadRequest"
         "500":
           $ref: "#/components/responses/InternalServerError"
+
+  /cashflow/transactions:
+    get:
+      tags: [Cashflow]
+      summary: Listar transacoes
+      description: Retorna transacoes do usuario com filtros opcionais
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: start_date
+          in: query
+          description: Data de inicio (YYYY-MM-DD)
+          schema:
+            type: string
+            format: date
+        - name: end_date
+          in: query
+          description: Data de fim (YYYY-MM-DD)
+          schema:
+            type: string
+            format: date
+        - name: type
+          in: query
+          description: Tipo de transacao
+          schema:
+            type: string
+            enum: [income, expense]
+        - name: limit
+          in: query
+          description: Limite de resultados
+          schema:
+            type: integer
+            default: 50
+        - name: offset
+          in: query
+          description: Offset para paginacao
+          schema:
+            type: integer
+            default: 0
+      responses:
+        "200":
+          description: Lista de transacoes
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TransactionsResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+    post:
+      tags: [Cashflow]
+      summary: Criar transacao
+      description: Cria uma nova transacao (receita ou despesa). Se category_id for fornecido, deve ser uma categoria do proprio usuario.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TransactionInput"
+      responses:
+        "200":
+          description: Transacao criada com sucesso
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TransactionResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "400":
+          description: Dados invalidos ou categoria nao pertence ao usuario
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: Categoria nao encontrada ou nao pertence ao usuario
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /cashflow/transactions/{id}:
     put:
-      tags: [Users]
-      summary: Atualizar perfil de usuário
-      description: "Atualiza um perfil existente.
-
-        - **Usuários normais**: Podem atualizar apenas seu próprio perfil
-
-        - **Staff**: Podem atualizar qualquer perfil
-
-        - **Segurança**: Campo `is_staff` não pode ser alterado via esta API
-
-        "
+      tags: [Cashflow]
+      summary: Atualizar transacao
+      description: Atualiza uma transacao existente. Se category_id for fornecido, deve ser uma categoria do proprio usuario.
       security:
         - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: ID da transacao
+          schema:
+            type: string
+            format: uuid
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/UserProfileUpdateInput"
+              $ref: "#/components/schemas/TransactionUpdateInput"
       responses:
         "200":
-          description: Perfil atualizado com sucesso
+          description: Transacao atualizada com sucesso
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/UserProfile"
+                $ref: "#/components/schemas/TransactionResponse"
         "401":
           $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
         "400":
-          $ref: "#/components/responses/BadRequest"
+          description: Dados invalidos ou categoria nao pertence ao usuario
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: Categoria nao encontrada ou nao pertence ao usuario
+        "404":
+          description: Transacao nao encontrada
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "500":
           $ref: "#/components/responses/InternalServerError"
-  /admin:
-    post:
-      tags: [Admin]
-      summary: Executa ações relacionadas ao usuário autenticado
-      description:
-        '- `action: "me"` retorna dados do usuário e seu perfil (`users`).
-
-        - `action: "change_staff"` altera o `is_staff` de um usuário alvo (somente
-        staff).
-
-        - `action: "login"` loga um usuário com email/senha (não requer autenticação).
-
-        '
+    delete:
+      tags: [Cashflow]
+      summary: Deletar transacao
+      description: Remove uma transacao
       security:
-        - bearerAuth: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              oneOf:
-                - $ref: "#/components/schemas/MeRequest"
-                - $ref: "#/components/schemas/ChangeStaffRequest"
-                - $ref: "#/components/schemas/LoginRequest"
-            examples:
-              me:
-                summary: Obter usuário logado
-                value:
-                  action: me
-              change_staff:
-                summary: Alterar is_staff de outro usuário
-                value:
-                  action: change_staff
-                  target_user_id: 00000000-0000-0000-0000-000000000000
-                  is_staff: true
-              login:
-                summary: Loga usaurio
-                value:
-                  action: login
-                  email: xxx@xxx.com
-                  password: xxxxxxx
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: ID da transacao
+          schema:
+            type: string
+            format: uuid
       responses:
         "200":
-          description: Sucesso
+          description: Transacao deletada com sucesso
           content:
             application/json:
               schema:
-                oneOf:
-                  - $ref: "#/components/schemas/MeResponse"
-                  - $ref: "#/components/schemas/AuthStaffResponse"
-                  - $ref: "#/components/schemas/ChangeStaffResponse"
-        "400":
-          description: Erro de requisição (parâmetros inválidos ou ação inválida)
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
+                $ref: "#/components/schemas/DeleteResponse"
         "401":
-          description: Não autorizado (token ausente ou inválido)
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: Transacao nao encontrada
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
-        "403":
-          description: Proibido (sem permissão de staff)
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /cashflow/summary:
+    get:
+      tags: [Cashflow]
+      summary: Resumo financeiro
+      description: Retorna resumo financeiro com total de receitas, despesas e saldo
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: start_date
+          in: query
+          description: Data de inicio (YYYY-MM-DD)
+          schema:
+            type: string
+            format: date
+        - name: end_date
+          in: query
+          description: Data de fim (YYYY-MM-DD)
+          schema:
+            type: string
+            format: date
+      responses:
+        "200":
+          description: Resumo financeiro
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "405":
-          description: Método não permitido
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
+                $ref: "#/components/schemas/SummaryResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
 components:
   securitySchemes:
     BearerAuth:
@@ -242,10 +304,7 @@ components:
       scheme: bearer
       bearerFormat: JWT
       description: JWT token do Supabase Auth
-    bearerAuth:
-      type: http
-      scheme: bearer
-      bearerFormat: JWT
+
   schemas:
     AuthLoginRequest:
       type: object
@@ -253,19 +312,20 @@ components:
         email:
           type: string
           format: email
-          description: Email do usuário
+          description: Email do usuario
         password:
           type: string
-          description: Senha do usuário
+          description: Senha do usuario
       required:
         - email
         - password
+
     AuthLoginResponse:
       type: object
       properties:
         token_type:
           type: string
-          description: Tipo do token (geralmente "bearer")
+          description: Tipo do token
         access_token:
           type: string
           description: Token de acesso JWT
@@ -274,128 +334,48 @@ components:
           description: Token de refresh
         expires_in:
           type: integer
-          description: Tempo de expiração em segundos
+          description: Tempo de expiracao em segundos
         user:
           $ref: "#/components/schemas/AuthUser"
         profile:
           $ref: "#/components/schemas/UserProfile"
+
     AuthUser:
       type: object
       properties:
         id:
           type: string
           format: uuid
-          description: ID único do usuário
+          description: ID unico do usuario
         email:
           type: string
           format: email
-          description: Email do usuário
+          description: Email do usuario
         phone:
           type: string
           nullable: true
-          description: Telefone do usuário
+          description: Telefone do usuario
         app_metadata:
           type: object
           additionalProperties: true
-          description: Metadados da aplicação
+          description: Metadados da aplicacao
         user_metadata:
           type: object
           additionalProperties: true
-          description: Metadados do usuário
+          description: Metadados do usuario
         role:
           type: string
           nullable: true
-          description: Role do usuário
+          description: Role do usuario
         created_at:
           type: string
           format: date-time
-          description: Data de criação
+          description: Data de criacao
         updated_at:
           type: string
           format: date-time
-          description: Data da última atualização
-        email_confirmed_at:
-          type: string
-          format: date-time
-          nullable: true
-          description: Data de confirmação do email
-        phone_confirmed_at:
-          type: string
-          format: date-time
-          nullable: true
-          description: Data de confirmação do telefone
-        last_sign_in_at:
-          type: string
-          format: date-time
-          nullable: true
-          description: Data do último login
-        confirmed_at:
-          type: string
-          format: date-time
-          nullable: true
-          description: Data de confirmação da conta
-        recovery_sent_at:
-          type: string
-          format: date-time
-          nullable: true
-          description: Data de envio do email de recuperação
-        new_email:
-          type: string
-          nullable: true
-          description: Novo email pendente de confirmação
-        new_phone:
-          type: string
-          nullable: true
-          description: Novo telefone pendente de confirmação
-        invited_at:
-          type: string
-          format: date-time
-          nullable: true
-          description: Data do convite
-        action_link:
-          type: string
-          nullable: true
-          description: Link de ação
-        email_change_sent_at:
-          type: string
-          format: date-time
-          nullable: true
-          description: Data de envio do email de mudança
-        new_email_change_sent_at:
-          type: string
-          format: date-time
-          nullable: true
-          description: Data de envio do novo email de mudança
-        phone_change_sent_at:
-          type: string
-          format: date-time
-          nullable: true
-          description: Data de envio do telefone de mudança
-        new_phone_change_sent_at:
-          type: string
-          format: date-time
-          nullable: true
-          description: Data de envio do novo telefone de mudança
-        reauthentication_sent_at:
-          type: string
-          format: date-time
-          nullable: true
-          description: Data de envio da reautenticação
-        reauthentication_token:
-          type: string
-          nullable: true
-          description: Token de reautenticação
-        is_sso_user:
-          type: boolean
-          description: Se é usuário SSO
-        deleted_at:
-          type: string
-          format: date-time
-          nullable: true
-          description: Data de exclusão
-        is_anonymous:
-          type: boolean
-          description: Se é usuário anônimo
+          description: Data da ultima atualizacao
+
     AuthMeResponse:
       type: object
       properties:
@@ -403,431 +383,322 @@ components:
           $ref: "#/components/schemas/AuthUser"
         profile:
           $ref: "#/components/schemas/UserProfile"
+
     UserProfile:
       type: object
       properties:
         id:
           type: string
           format: uuid
-          description: ID único do usuário
+          description: ID unico do usuario
         email:
           type: string
           format: email
-          description: Email do usuário
+          description: Email do usuario
         full_name:
           type: string
           description: Nome completo
         username:
           type: string
-          description: Nome de usuário único
+          description: Nome de usuario unico
         avatar_url:
           type: string
           format: uri
           description: URL do avatar
         bio:
           type: string
-          description: Biografia do usuário
+          description: Biografia do usuario
         phone:
           type: string
-          description: Número de telefone
+          description: Numero de telefone
         date_of_birth:
           type: string
           format: date
           description: Data de nascimento
         location:
           type: string
-          description: Localização
+          description: Localizacao
         website:
           type: string
           format: uri
           description: Website pessoal
         is_staff:
           type: boolean
-          description: Se o usuário tem privilégios de staff (somente leitura)
+          description: Se o usuario tem privilegios de staff
         is_verified:
           type: boolean
           description: Se o email foi verificado
         is_active:
           type: boolean
-          description: Se a conta está ativa
+          description: Se a conta esta ativa
         last_login:
           type: string
           format: date-time
-          description: Último login
+          description: Ultimo login
         preferences:
           type: object
-          description: Preferências do usuário em formato JSON
+          description: Preferencias do usuario em formato JSON
         created_at:
           type: string
           format: date-time
-          description: Data de criação
+          description: Data de criacao
         updated_at:
           type: string
           format: date-time
-          description: Data da última atualização
+          description: Data da ultima atualizacao
       required:
         - id
         - email
         - full_name
-    UserProfileInput:
+
+    Category:
       type: object
       properties:
-        email:
+        id:
           type: string
-          format: email
-          description: Email do usuário (apenas para staff criando novos usuários)
-        password:
+          format: uuid
+          description: ID unico da categoria
+        name:
           type: string
-          description: Senha do usuário (apenas para staff criando novos usuários)
-        full_name:
+          description: Nome da categoria
+        type:
           type: string
-          description: Nome completo
-        username:
+          enum: [income, expense]
+          description: Tipo da categoria
+        color:
           type: string
-          description: Nome de usuário único
-        avatar_url:
+          description: Cor da categoria
+        icon:
           type: string
-          format: uri
-          description: URL do avatar
-        bio:
-          type: string
-          description: Biografia do usuário
-        phone:
-          type: string
-          description: Número de telefone
-        date_of_birth:
-          type: string
-          format: date
-          description: Data de nascimento
-        location:
-          type: string
-          description: Localização
-        website:
-          type: string
-          format: uri
-          description: Website pessoal
-        preferences:
-          type: object
-          description: Preferências do usuário em formato JSON
-      required:
-        - full_name
-    UserProfileUpdateInput:
-      allOf:
-        - $ref: "#/components/schemas/UserProfileInput"
-        - type: object
-          properties:
-            id:
-              type: string
-              format: uuid
-              description:
-                ID do usuário a ser atualizado (staff pode especificar, usuários
-                normais não podem)
-    UserCreateResponse:
-      type: object
-      properties:
-        message:
-          type: string
-          description: Mensagem de confirmação
-          example: User created successfully
-        user:
-          $ref: "#/components/schemas/UserProfile"
-    StaffUpdateInput:
-      type: object
-      properties:
+          description: Icone da categoria
         user_id:
           type: string
           format: uuid
-          description: ID do usuário cujo status de staff será alterado
-        is_staff:
-          type: boolean
-          description: Novo status de staff (true = staff, false = usuário normal)
+          description: ID do usuario proprietario (cada categoria pertence a um usuario especifico)
+        created_at:
+          type: string
+          format: date-time
+          description: Data de criacao
+        updated_at:
+          type: string
+          format: date-time
+          description: Data da ultima atualizacao
       required:
+        - id
+        - name
+        - type
         - user_id
-        - is_staff
-    StaffUpdateResponse:
+
+    CategoryInput:
       type: object
       properties:
-        message:
+        name:
           type: string
-          description: Mensagem de confirmação
-          example: User joao@exemplo.com staff status updated to true
-        user:
-          type: object
-          properties:
-            id:
-              type: string
-              format: uuid
-            email:
-              type: string
-            full_name:
-              type: string
-            is_staff:
-              type: boolean
-            updated_at:
-              type: string
-              format: date-time
-    UsersListResponse:
-      type: object
-      properties:
-        users:
-          type: array
-          items:
-            $ref: "#/components/schemas/UserProfile"
-        is_staff:
-          type: boolean
-          example: true
-          description: Indica que o usuário logado é staff
-    UserProfileResponse:
-      type: object
-      properties:
-        user:
-          $ref: "#/components/schemas/UserProfile"
-        is_staff:
-          type: boolean
-          example: false
-          description: Indica que o usuário logado não é staff
-    AdminUsersListResponse:
-      type: object
-      properties:
-        users:
-          type: array
-          items:
-            type: object
-            properties:
-              id:
-                type: string
-                format: uuid
-              email:
-                type: string
-              full_name:
-                type: string
-              username:
-                type: string
-              is_staff:
-                type: boolean
-              is_active:
-                type: boolean
-              created_at:
-                type: string
-                format: date-time
-              updated_at:
-                type: string
-                format: date-time
-        total:
-          type: integer
-          description: Total de usuários
-        staff_count:
-          type: integer
-          description: Total de usuários staff
-    MeRequest:
-      type: object
-      properties:
-        action:
+          description: Nome da categoria
+        type:
           type: string
-          const: me
+          enum: [income, expense]
+          description: Tipo da categoria
+        color:
+          type: string
+          description: Cor da categoria
+          default: "#3B82F6"
+        icon:
+          type: string
+          description: Icone da categoria
+          default: "💰"
       required:
-        - action
-    ChangeStaffRequest:
+        - name
+        - type
+
+    CategoryResponse:
       type: object
       properties:
-        action:
-          type: string
-          const: change_staff
-        target_user_id:
+        category:
+          $ref: "#/components/schemas/Category"
+
+    CategoriesResponse:
+      type: object
+      properties:
+        categories:
+          type: array
+          items:
+            $ref: "#/components/schemas/Category"
+
+    Transaction:
+      type: object
+      properties:
+        id:
           type: string
           format: uuid
-        is_staff:
-          type: boolean
+          description: ID unico da transacao
+        user_id:
+          type: string
+          format: uuid
+          description: ID do usuario proprietario
+        category_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: ID da categoria
+        type:
+          type: string
+          enum: [income, expense]
+          description: Tipo da transacao
+        amount:
+          type: number
+          format: decimal
+          description: Valor da transacao
+        description:
+          type: string
+          description: Descricao da transacao
+        date:
+          type: string
+          format: date
+          description: Data da transacao
+        tags:
+          type: array
+          items:
+            type: string
+          description: Tags da transacao
+        notes:
+          type: string
+          nullable: true
+          description: Notas adicionais
+        created_at:
+          type: string
+          format: date-time
+          description: Data de criacao
+        updated_at:
+          type: string
+          format: date-time
+          description: Data da ultima atualizacao
+        category:
+          $ref: "#/components/schemas/Category"
       required:
-        - action
-        - target_user_id
-        - is_staff
-    LoginRequest:
+        - id
+        - user_id
+        - type
+        - amount
+        - description
+
+    TransactionInput:
       type: object
       properties:
-        action:
+        type:
           type: string
-          const: login
-        email:
+          enum: [income, expense]
+          description: Tipo da transacao
+        amount:
+          type: number
+          format: decimal
+          description: Valor da transacao
+        description:
           type: string
-          format: email
-        password:
+          description: Descricao da transacao
+        date:
           type: string
+          format: date
+          description: Data da transacao
+        category_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: ID da categoria (opcional, deve ser uma categoria do proprio usuario)
+        tags:
+          type: array
+          items:
+            type: string
+          description: Tags da transacao
+        notes:
+          type: string
+          description: Notas adicionais
       required:
-        - action
-        - email
-        - password
-    MeResponse:
+        - type
+        - amount
+        - description
+
+    TransactionUpdateInput:
       type: object
       properties:
-        user:
+        type:
+          type: string
+          enum: [income, expense]
+          description: Tipo da transacao
+        amount:
+          type: number
+          format: decimal
+          description: Valor da transacao
+        description:
+          type: string
+          description: Descricao da transacao
+        date:
+          type: string
+          format: date
+          description: Data da transacao
+        category_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: ID da categoria (opcional, deve ser uma categoria do proprio usuario)
+        tags:
+          type: array
+          items:
+            type: string
+          description: Tags da transacao
+        notes:
+          type: string
+          description: Notas adicionais
+
+    TransactionResponse:
+      type: object
+      properties:
+        transaction:
+          $ref: "#/components/schemas/Transaction"
+
+    TransactionsResponse:
+      type: object
+      properties:
+        transactions:
+          type: array
+          items:
+            $ref: "#/components/schemas/Transaction"
+
+    SummaryResponse:
+      type: object
+      properties:
+        summary:
           type: object
           properties:
-            id:
-              type: string
-              format: uuid
-            email:
-              type: string
-              format: email
-            phone:
-              type:
-                - string
-                - "null"
-            role:
-              type:
-                - string
-                - "null"
-            app_metadata:
-              type: object
-              additionalProperties: true
-            user_metadata:
-              type: object
-              additionalProperties: true
-            created_at:
-              type: string
-              format: date-time
-            updated_at:
-              type:
-                - string
-                - "null"
-              format: date-time
-        profile:
-          type: object
-          additionalProperties: true
-    ChangeStaffResponse:
+            totalIncome:
+              type: number
+              format: decimal
+              description: Total de receitas
+            totalExpenses:
+              type: number
+              format: decimal
+              description: Total de despesas
+            balance:
+              type: number
+              format: decimal
+              description: Saldo
+
+    DeleteResponse:
       type: object
       properties:
         message:
           type: string
-        target:
-          type: object
-          properties:
-            id:
-              type: string
-              format: uuid
-            is_staff:
-              type: boolean
-    LoginResponse:
-      type: object
-      properties:
-        message:
-          type: string
-        target:
-          type: object
-          properties:
-            id:
-              type: string
-              format: uuid
-            is_staff:
-              type: boolean
+          description: Mensagem de confirmacao
+
     ErrorResponse:
       type: object
       properties:
         error:
           type: string
-    x-merged-alt-MeRequest:
-      type: object
-      properties:
-        action:
-          type: string
-          const: me
-      required:
-        - action
-    x-merged-alt-ChangeStaffRequest:
-      type: object
-      properties:
-        action:
-          type: string
-          const: change_staff
-        target_user_id:
-          type: string
-          format: uuid
-        is_staff:
-          type: boolean
-      required:
-        - action
-        - target_user_id
-        - is_staff
-    x-merged-alt-LoginRequest:
-      type: object
-      properties:
-        action:
-          type: string
-          const: login
-        email:
-          type: string
-          format: email
-        password:
-          type: string
-      required:
-        - action
-        - email
-        - password
-    x-merged-alt-MeResponse:
-      type: object
-      properties:
-        user:
-          type: object
-          properties:
-            id:
-              type: string
-              format: uuid
-            email:
-              type: string
-              format: email
-            phone:
-              type:
-                - string
-                - "null"
-            role:
-              type:
-                - string
-                - "null"
-            app_metadata:
-              type: object
-              additionalProperties: true
-            user_metadata:
-              type: object
-              additionalProperties: true
-            created_at:
-              type: string
-              format: date-time
-            updated_at:
-              type:
-                - string
-                - "null"
-              format: date-time
-        profile:
-          type: object
-          additionalProperties: true
-    AuthStaffResponse:
-      type: object
-      properties:
-        ok:
-          type: boolean
-        is_staff:
-          type: boolean
-    x-merged-alt-ChangeStaffResponse:
-      type: object
-      properties:
-        message:
-          type: string
-        target:
-          type: object
-          properties:
-            id:
-              type: string
-              format: uuid
-            is_staff:
-              type: boolean
-    x-merged-alt-ErrorResponse:
-      type: object
-      properties:
-        error:
-          type: string
+
   responses:
     Unauthorized:
-      description: Token de autenticação inválido ou ausente
+      description: Token de autenticacao invalido ou ausente
       content:
         application/json:
           schema:
@@ -836,18 +707,9 @@ components:
               error:
                 type: string
                 example: Unauthorized
-    Forbidden:
-      description: Usuário não tem permissão para executar esta ação
-      content:
-        application/json:
-          schema:
-            type: object
-            properties:
-              error:
-                type: string
-                example: Insufficient permissions
+
     BadRequest:
-      description: Requisição inválida
+      description: Requisicao invalida
       content:
         application/json:
           schema:
@@ -856,6 +718,7 @@ components:
               error:
                 type: string
                 example: Invalid request data
+
     InternalServerError:
       description: Erro interno do servidor
       content:
@@ -866,10 +729,9 @@ components:
               error:
                 type: string
                 example: Internal server error
+
 tags:
   - name: Auth
-    description: Operações de autenticação (login, dados do usuário logado)
-  - name: Users
-    description: Operações relacionadas a usuários (perfis, criação, atualização)
-  - name: Admin
-    description: Operações administrativas (gerenciamento de staff)
+    description: Operacoes de autenticacao (login, dados do usuario logado)
+  - name: Cashflow
+    description: Sistema de controle de caixa pessoal (receitas, despesas, categorias). Cada usuario tem isolamento completo de seus dados.
