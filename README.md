@@ -148,6 +148,14 @@ SUPABASE_SERVICE_ROLE_KEY=sua_chave_de_servico
 2. **Anon Key**: Chave pública para frontend
 3. **Service Role Key**: Chave privada para operações admin (não exponha no frontend)
 
+### Swagger
+
+``` sh
+npm run swagger:serve
+```
+
+
+
 ## Vantagens do Supabase Cloud:
 - ✅ Sem necessidade de Docker
 - ✅ Sem configuração local complexa
