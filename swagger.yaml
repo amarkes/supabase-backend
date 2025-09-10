@@ -179,6 +179,9 @@ paths:
               schema:
                 type: object
                 properties:
+                  success:
+                    type: boolean
+                    example: false
                   error:
                     type: string
                     example: Categoria nao encontrada ou nao pertence ao usuario
@@ -222,6 +225,9 @@ paths:
               schema:
                 type: object
                 properties:
+                  success:
+                    type: boolean
+                    example: false
                   error:
                     type: string
                     example: Categoria nao encontrada ou nao pertence ao usuario
@@ -514,16 +520,36 @@ components:
     CategoryResponse:
       type: object
       properties:
-        category:
+        success:
+          type: boolean
+          description: Indica se a operacao foi bem-sucedida
+          example: true
+        data:
           $ref: "#/components/schemas/Category"
+        message:
+          type: string
+          description: Mensagem descritiva da operacao
+          example: "Categoria criada com sucesso"
 
     CategoriesResponse:
       type: object
       properties:
-        categories:
+        success:
+          type: boolean
+          description: Indica se a operacao foi bem-sucedida
+          example: true
+        data:
           type: array
           items:
             $ref: "#/components/schemas/Category"
+        count:
+          type: integer
+          description: Numero de itens retornados
+          example: 5
+        message:
+          type: string
+          description: Mensagem descritiva da operacao
+          example: "Categorias listadas com sucesso"
 
     Transaction:
       type: object
@@ -653,21 +679,45 @@ components:
     TransactionResponse:
       type: object
       properties:
-        transaction:
+        success:
+          type: boolean
+          description: Indica se a operacao foi bem-sucedida
+          example: true
+        data:
           $ref: "#/components/schemas/Transaction"
+        message:
+          type: string
+          description: Mensagem descritiva da operacao
+          example: "Transacao criada com sucesso"
 
     TransactionsResponse:
       type: object
       properties:
-        transactions:
+        success:
+          type: boolean
+          description: Indica se a operacao foi bem-sucedida
+          example: true
+        data:
           type: array
           items:
             $ref: "#/components/schemas/Transaction"
+        count:
+          type: integer
+          description: Numero de itens retornados
+          example: 10
+        message:
+          type: string
+          description: Mensagem descritiva da operacao
+          example: "Transacoes listadas com sucesso"
 
     SummaryResponse:
       type: object
       properties:
-        summary:
+        success:
+          type: boolean
+          description: Indica se a operacao foi bem-sucedida
+          example: true
+        data:
           type: object
           properties:
             totalIncome:
@@ -682,19 +732,33 @@ components:
               type: number
               format: decimal
               description: Saldo
+        message:
+          type: string
+          description: Mensagem descritiva da operacao
+          example: "Resumo financeiro calculado com sucesso"
 
     DeleteResponse:
       type: object
       properties:
+        success:
+          type: boolean
+          description: Indica se a operacao foi bem-sucedida
+          example: true
         message:
           type: string
           description: Mensagem de confirmacao
+          example: "Transacao deletada com sucesso"
 
     ErrorResponse:
       type: object
       properties:
+        success:
+          type: boolean
+          description: Indica se a operacao foi bem-sucedida
+          example: false
         error:
           type: string
+          description: Mensagem de erro
 
   responses:
     Unauthorized:
@@ -704,6 +768,9 @@ components:
           schema:
             type: object
             properties:
+              success:
+                type: boolean
+                example: false
               error:
                 type: string
                 example: Unauthorized
@@ -715,6 +782,9 @@ components:
           schema:
             type: object
             properties:
+              success:
+                type: boolean
+                example: false
               error:
                 type: string
                 example: Invalid request data
@@ -726,6 +796,9 @@ components:
           schema:
             type: object
             properties:
+              success:
+                type: boolean
+                example: false
               error:
                 type: string
                 example: Internal server error

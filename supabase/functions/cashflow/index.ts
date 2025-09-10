@@ -16,6 +16,21 @@ const json = (data: unknown, status = 200) =>
     headers: { ...corsHeaders, 'Content-Type': 'application/json; charset=utf-8' },
   })
 
+// ============================
+// Response helpers padronizados
+// ============================
+const success = (data: unknown, message?: string) => 
+  json({ success: true, data, ...(message && { message }) })
+
+const successList = (items: unknown[], message?: string) => 
+  json({ success: true, data: items, count: items.length, ...(message && { message }) })
+
+const successItem = (item: unknown, message?: string) => 
+  json({ success: true, data: item, ...(message && { message }) })
+
+const successMessage = (message: string) => 
+  json({ success: true, message })
+
 class HttpError extends Error {
   status: number
   constructor(status: number, message: string) {
@@ -98,7 +113,7 @@ const handlers: Record<
 
     if (error) throw new HttpError(400, error.message)
 
-    return json({ categories: data })
+    return successList(data, 'Categorias listadas com sucesso')
   },
 
   // POST /categories - Criar categoria
@@ -127,7 +142,7 @@ const handlers: Record<
 
     if (error) throw new HttpError(400, error.message)
 
-    return json({ category: data })
+    return successItem(data, 'Categoria criada com sucesso')
   },
 
   // GET /transactions - Listar transações
@@ -161,7 +176,7 @@ const handlers: Record<
 
     if (error) throw new HttpError(400, error.message)
 
-    return json({ transactions: data })
+    return successList(data, 'Transações listadas com sucesso')
   },
 
   // POST /transactions - Criar transação
@@ -213,7 +228,7 @@ const handlers: Record<
 
     if (error) throw new HttpError(400, error.message)
 
-    return json({ transaction: data })
+    return successItem(data, 'Transação criada com sucesso')
   },
 
   // PUT /transactions/:id - Atualizar transação
@@ -269,7 +284,7 @@ const handlers: Record<
 
     if (error) throw new HttpError(400, error.message)
 
-    return json({ transaction: data })
+    return successItem(data, 'Transação atualizada com sucesso')
   },
 
   // DELETE /transactions/:id - Deletar transação
@@ -288,7 +303,7 @@ const handlers: Record<
 
     if (error) throw new HttpError(400, error.message)
 
-    return json({ message: 'Transação deletada com sucesso' })
+    return successMessage('Transação deletada com sucesso')
   },
 
   // GET /summary - Resumo financeiro
@@ -321,7 +336,7 @@ const handlers: Record<
 
     summary.balance = summary.totalIncome - summary.totalExpenses
 
-    return json({ summary })
+    return success(summary, 'Resumo financeiro calculado com sucesso')
   },
 }
 
