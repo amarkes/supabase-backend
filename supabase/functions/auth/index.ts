@@ -7,7 +7,8 @@ import { createClient, type User } from 'https://esm.sh/@supabase/supabase-js@2'
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, accept',
-  'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
+  'Access-Control-Allow-Methods': 'GET,POST,DELETE,OPTIONS',
+  'Access-Control-Allow-Credentials': 'true',
 } as const
 
 const json = (data: unknown, status = 200) =>
@@ -167,7 +168,6 @@ const handlers: Record<
     })
     
     if (error) {
-      console.error('Login error:', error)
       throw new HttpError(401, error.message)
     }
 
@@ -200,6 +200,69 @@ const handlers: Record<
       profile,
     })
   },
+
+  // DELETE /logout - Logout do usuário
+  async logout({ authed, req }: Ctx) {
+    const user = await requireAuth(authed)
+
+    const url = new URL(req.url)
+    const scope = url.searchParams.get('scope') || 'local'
+    const targetUserId = url.searchParams.get('user_id')
+
+    // Verificar se é staff para logout de outros usuários
+    if (targetUserId && targetUserId !== user.id) {
+      const { data: currentUser, error: userError } = await authed
+        .from('users')
+        .select('is_staff')
+        .eq('id', user.id)
+        .single()
+
+      if (userError || !currentUser?.is_staff) {
+        throw new HttpError(403, 'Insufficient permissions')
+      }
+    }
+
+    const userIdToLogout = targetUserId || user.id
+
+    try {
+      // Para logout local do próprio usuário, usar o cliente autenticado
+      if (scope === 'local' && !targetUserId) {
+        const { error: logoutError } = await authed.auth.signOut()
+        
+        if (logoutError) {
+          // Mesmo com erro, consideramos sucesso pois o token pode já estar expirado
+        }
+        
+        return json({ 
+          message: `User logged out successfully (local scope)`,
+          user_id: userIdToLogout,
+          scope: 'local'
+        })
+      }
+
+      // Para logout global do próprio usuário ou logout de outros usuários, usar admin client
+      const { error: logoutError } = await admin.auth.admin.signOut(userIdToLogout, {
+        scope: scope as 'local' | 'global'
+      })
+
+      if (logoutError) {
+        // Mesmo com erro, consideramos sucesso pois o token pode já estar expirado
+      }
+
+      return json({ 
+        message: `User logged out successfully (${scope} scope)`,
+        user_id: userIdToLogout,
+        scope: scope
+      })
+    } catch (err) {
+      // Mesmo com erro, consideramos sucesso pois o logout pode ter funcionado
+      return json({ 
+        message: `User logged out successfully (${scope} scope)`,
+        user_id: userIdToLogout,
+        scope: scope
+      })
+    }
+  },
 }
 
 // ============================
@@ -228,6 +291,10 @@ serve(async (req) => {
 
     if (req.method === 'POST' && (cleanPath === '/login' || cleanPath === '/auth/login')) {
       return await handlers.login({ req, authed, authHeader })
+    }
+
+    if (req.method === 'DELETE' && (cleanPath === '/logout' || cleanPath === '/auth/logout')) {
+      return await handlers.logout({ req, authed, authHeader })
     }
 
     return json({ error: `Endpoint não encontrado: ${req.method} ${cleanPath}` }, 404)

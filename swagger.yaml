@@ -213,6 +213,87 @@ paths:
         "500":
           $ref: "#/components/responses/InternalServerError"
 
+  /auth/logout:
+    delete:
+      tags: [Auth]
+      summary: Fazer logout do usuário
+      description: |
+        Faz logout do usuário com diferentes opções de escopo:
+        - **Usuários comuns**: Faz logout apenas do próprio usuário
+        - **Usuários staff (is_staff=true)**: Podem fazer logout de qualquer usuário (incluindo si mesmo)
+        
+        **Escopos de logout:**
+        - `local` (padrão): Logout apenas do dispositivo atual
+        - `global`: Logout de todos os dispositivos do usuário
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: scope
+          in: query
+          description: Escopo do logout
+          required: false
+          schema:
+            type: string
+            enum: [local, global]
+            default: local
+        - name: user_id
+          in: query
+          description: ID do usuário para logout (apenas para staff)
+          required: false
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Logout realizado com sucesso
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "User logged out successfully (local scope)"
+                  user_id:
+                    type: string
+                    format: uuid
+                    example: "123e4567-e89b-12d3-a456-426614174001"
+                  scope:
+                    type: string
+                    enum: [local, global]
+                    example: "local"
+              examples:
+                local_logout:
+                  summary: Logout local (padrão)
+                  value:
+                    message: "User logged out successfully (local scope)"
+                    user_id: "123e4567-e89b-12d3-a456-426614174001"
+                    scope: "local"
+                global_logout:
+                  summary: Logout global (todos os dispositivos)
+                  value:
+                    message: "User logged out successfully (global scope)"
+                    user_id: "123e4567-e89b-12d3-a456-426614174001"
+                    scope: "global"
+                staff_logout:
+                  summary: Staff fazendo logout de outro usuário
+                  value:
+                    message: "User logged out successfully (global scope)"
+                    user_id: "123e4567-e89b-12d3-a456-426614174002"
+                    scope: "global"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: Permissões insuficientes
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error: "Insufficient permissions"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
   /cashflow/categories:
     get:
       tags: [Cashflow]
