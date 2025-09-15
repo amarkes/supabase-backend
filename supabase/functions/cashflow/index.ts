@@ -7,7 +7,7 @@ import { createClient, type User } from 'https://esm.sh/@supabase/supabase-js@2'
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, accept',
-  'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS',
+  'Access-Control-Allow-Methods': 'GET,POST,PUT,PATCH,DELETE,OPTIONS',
 } as const
 
 const json = (data: unknown, status = 200) =>
@@ -104,16 +104,131 @@ const handlers: Record<
   async categories({ authed }: Ctx) {
     const user = await requireAuth(authed)
 
-    const { data, error } = await authed
-      .from('categories')
-      .select('*')
-      .eq('user_id', user.id)
-      .order('type', { ascending: true })
-      .order('name', { ascending: true })
+    // Verificar se o usuário é staff
+    const { data: userData, error: userError } = await authed
+      .from('users')
+      .select('is_staff')
+      .eq('id', user.id)
+      .single()
 
-    if (error) throw new HttpError(400, error.message)
+    if (userError) throw new HttpError(400, userError.message)
 
-    return successList(data, 'Categorias listadas com sucesso')
+    // Se for staff, usar cliente admin para acessar todas as categorias
+    // Se não for staff, usar cliente autenticado para suas próprias categorias
+    if (userData?.is_staff) {
+      // Staff pode ver todas as categorias usando cliente admin
+      const { data: categories, error: categoriesError } = await admin
+        .from('categories')
+        .select('*')
+        .order('type', { ascending: true })
+        .order('name', { ascending: true })
+
+      if (categoriesError) throw new HttpError(400, categoriesError.message)
+
+      // Buscar dados dos usuários para cada categoria
+      const userIds = [...new Set(categories.map(cat => cat.user_id))]
+      const { data: users, error: usersError } = await admin
+        .from('users')
+        .select('id, email, full_name, is_staff')
+        .in('id', userIds)
+
+      if (usersError) throw new HttpError(400, usersError.message)
+
+      // Combinar dados das categorias com dados dos usuários
+      const categoriesWithUsers = categories.map(category => ({
+        ...category,
+        user: users.find(user => user.id === category.user_id)
+      }))
+
+      return successList(categoriesWithUsers, 'Categorias listadas com sucesso (visão staff)')
+    } else {
+      // Usuário comum vê apenas suas próprias categorias
+      const { data: categories, error: categoriesError } = await authed
+        .from('categories')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('type', { ascending: true })
+        .order('name', { ascending: true })
+
+      if (categoriesError) throw new HttpError(400, categoriesError.message)
+
+      // Buscar dados do usuário atual
+      const { data: userInfo, error: userError } = await authed
+        .from('users')
+        .select('id, email, full_name, is_staff')
+        .eq('id', user.id)
+        .single()
+
+      if (userError) throw new HttpError(400, userError.message)
+
+      // Combinar dados das categorias com dados do usuário
+      const categoriesWithUsers = categories.map(category => ({
+        ...category,
+        user: userInfo
+      }))
+
+      return successList(categoriesWithUsers, 'Categorias listadas com sucesso')
+    }
+  },
+
+  // GET /categories/:id - Buscar categoria por ID
+  async getCategory({ authed, req }: Ctx) {
+    const user = await requireAuth(authed)
+    const url = new URL(req.url)
+    const categoryId = url.pathname.split('/').pop()
+
+    if (!categoryId) {
+      throw new HttpError(400, 'ID da categoria é obrigatório')
+    }
+
+    // Verificar se o usuário é staff
+    const { data: userData, error: userError } = await authed
+      .from('users')
+      .select('is_staff')
+      .eq('id', user.id)
+      .single()
+
+    if (userError) throw new HttpError(400, userError.message)
+
+    let categoryQuery
+    if (userData?.is_staff) {
+      // Staff pode buscar qualquer categoria
+      categoryQuery = admin
+        .from('categories')
+        .select('*')
+        .eq('id', categoryId)
+        .single()
+    } else {
+      // Usuário comum só pode buscar suas próprias categorias
+      categoryQuery = authed
+        .from('categories')
+        .select('*')
+        .eq('id', categoryId)
+        .eq('user_id', user.id)
+        .single()
+    }
+
+    const { data: category, error: categoryError } = await categoryQuery
+
+    if (categoryError || !category) {
+      throw new HttpError(404, 'Categoria não encontrada')
+    }
+
+    // Buscar dados do usuário proprietário
+    const { data: userInfo, error: userInfoError } = await admin
+      .from('users')
+      .select('id, email, full_name, is_staff')
+      .eq('id', category.user_id)
+      .single()
+
+    if (userInfoError) throw new HttpError(400, userInfoError.message)
+
+    const categoryWithUser = {
+      ...category,
+      user: userInfo
+    }
+
+    return successItem(categoryWithUser, 'Categoria encontrada com sucesso')
   },
 
   // POST /categories - Criar categoria
@@ -121,20 +236,32 @@ const handlers: Record<
     const user = await requireAuth(authed)
     const { name, type, color, icon } = await readJSON<{
       name?: string
-      type?: 'income' | 'expense'
+      type?: string
       color?: string
       icon?: string
     }>(req)
 
     requireFields({ name, type }, ['name', 'type'])
 
+    // Sanitizar e validar o tipo
+    const sanitizedType = type!.toString().toLowerCase().trim()
+    if (!['income', 'expense'].includes(sanitizedType)) {
+      throw new HttpError(400, 'Tipo deve ser "income" ou "expense"')
+    }
+
+    // Sanitizar o nome
+    const sanitizedName = name!.toString().trim()
+    if (!sanitizedName) {
+      throw new HttpError(400, 'Nome da categoria não pode estar vazio')
+    }
+
     const { data, error } = await authed
       .from('categories')
       .insert({
-        name: name!,
-        type: type!,
-        color: color || '#3B82F6',
-        icon: icon || '💰',
+        name: sanitizedName,
+        type: sanitizedType as 'income' | 'expense',
+        color: color?.toString().trim() || '#3B82F6',
+        icon: icon?.toString().trim() || '💰',
         user_id: user.id,
       })
       .select()
@@ -143,6 +270,114 @@ const handlers: Record<
     if (error) throw new HttpError(400, error.message)
 
     return successItem(data, 'Categoria criada com sucesso')
+  },
+
+  // DELETE /categories/:id - Deletar categoria
+  async deleteCategory({ authed, req }: Ctx) {
+    const user = await requireAuth(authed)
+    const url = new URL(req.url)
+    const categoryId = url.pathname.split('/').pop()
+
+    if (!categoryId) {
+      throw new HttpError(400, 'ID da categoria é obrigatório')
+    }
+
+    // Verificar se a categoria existe e pertence ao usuário
+    const { data: category, error: fetchError } = await authed
+      .from('categories')
+      .select('id, name')
+      .eq('id', categoryId)
+      .eq('user_id', user.id)
+      .single()
+
+    if (fetchError || !category) {
+      throw new HttpError(404, 'Categoria não encontrada')
+    }
+
+    // Verificar se existem transações usando esta categoria
+    const { data: transactions, error: checkError } = await authed
+      .from('transactions')
+      .select('id')
+      .eq('category_id', categoryId)
+      .limit(1)
+
+    if (checkError) {
+      throw new HttpError(400, checkError.message)
+    }
+
+    if (transactions && transactions.length > 0) {
+      throw new HttpError(400, 'Não é possível deletar categoria que possui transações associadas')
+    }
+
+    // Deletar a categoria
+    const { error: deleteError } = await authed
+      .from('categories')
+      .delete()
+      .eq('id', categoryId)
+      .eq('user_id', user.id)
+
+    if (deleteError) {
+      throw new HttpError(400, deleteError.message)
+    }
+
+    return successMessage(`Categoria "${category.name}" deletada com sucesso`)
+  },
+
+  // PUT /categories/:id - Atualizar categoria
+  async updateCategory({ authed, req }: Ctx) {
+    const user = await requireAuth(authed)
+    const url = new URL(req.url)
+    const categoryId = url.pathname.split('/').pop()
+
+    if (!categoryId) {
+      throw new HttpError(400, 'ID da categoria é obrigatório')
+    }
+
+    const { name, type, color, icon } = await readJSON<{
+      name?: string
+      type?: 'income' | 'expense'
+      color?: string
+      icon?: string
+    }>(req)
+
+    // Pelo menos um campo deve ser fornecido para atualização
+    if (!name && !type && !color && !icon) {
+      throw new HttpError(400, 'Pelo menos um campo deve ser fornecido para atualização')
+    }
+
+    // Verificar se a categoria existe e pertence ao usuário
+    const { data: existingCategory, error: fetchError } = await authed
+      .from('categories')
+      .select('id, name, type, color, icon')
+      .eq('id', categoryId)
+      .eq('user_id', user.id)
+      .single()
+
+    if (fetchError || !existingCategory) {
+      throw new HttpError(404, 'Categoria não encontrada')
+    }
+
+    // Preparar dados para atualização (só incluir campos fornecidos)
+    const updateData: any = {}
+    if (name !== undefined) updateData.name = name
+    if (type !== undefined) updateData.type = type
+    if (color !== undefined) updateData.color = color
+    if (icon !== undefined) updateData.icon = icon
+
+    // Atualizar a categoria
+    const { data, error: updateError } = await authed
+      .from('categories')
+      .update(updateData)
+      .eq('id', categoryId)
+      .eq('user_id', user.id)
+      .select()
+      .single()
+
+    if (updateError) {
+      throw new HttpError(400, updateError.message)
+    }
+
+    return successItem(data, 'Categoria atualizada com sucesso')
   },
 
   // GET /transactions - Listar transações
@@ -156,27 +391,159 @@ const handlers: Record<
     const limit = parseInt(url.searchParams.get('limit') || '50')
     const offset = parseInt(url.searchParams.get('offset') || '0')
 
-    let query = authed
-      .from('transactions')
-      .select(`
-        *,
-        category:categories(*)
-      `)
-      .eq('user_id', user.id)
-      .order('date', { ascending: false })
-      .order('created_at', { ascending: false })
-      .range(offset, offset + limit - 1)
+    // Verificar se o usuário é staff
+    const { data: userData, error: userError } = await authed
+      .from('users')
+      .select('is_staff')
+      .eq('id', user.id)
+      .single()
 
-    if (startDate) query = query.gte('date', startDate)
-    if (endDate) query = query.lte('date', endDate)
-    if (type) query = query.eq('type', type)
-    if (categoryId) query = query.eq('category_id', categoryId)
+    if (userError) throw new HttpError(400, userError.message)
 
-    const { data, error } = await query
+    // Se for staff, usar cliente admin para acessar todas as transações
+    // Se não for staff, usar cliente autenticado para suas próprias transações
+    if (userData?.is_staff) {
+      // Staff pode ver todas as transações usando cliente admin
+      const { data: transactions, error: transactionsError } = await admin
+        .from('transactions')
+        .select(`
+          *,
+          category:categories(*)
+        `)
+        .order('date', { ascending: false })
+        .order('created_at', { ascending: false })
+        .range(offset, offset + limit - 1)
 
-    if (error) throw new HttpError(400, error.message)
+      if (transactionsError) throw new HttpError(400, transactionsError.message)
 
-    return successList(data, 'Transações listadas com sucesso')
+      // Aplicar filtros se fornecidos
+      let filteredTransactions = transactions
+      if (startDate) filteredTransactions = filteredTransactions.filter(t => t.date >= startDate)
+      if (endDate) filteredTransactions = filteredTransactions.filter(t => t.date <= endDate)
+      if (type) filteredTransactions = filteredTransactions.filter(t => t.type === type)
+      if (categoryId) filteredTransactions = filteredTransactions.filter(t => t.category_id === categoryId)
+
+      // Buscar dados dos usuários para cada transação
+      const userIds = [...new Set(filteredTransactions.map(t => t.user_id))]
+      const { data: users, error: usersError } = await admin
+        .from('users')
+        .select('id, email, full_name, is_staff')
+        .in('id', userIds)
+
+      if (usersError) throw new HttpError(400, usersError.message)
+
+      // Combinar dados das transações com dados dos usuários
+      const transactionsWithUsers = filteredTransactions.map(transaction => ({
+        ...transaction,
+        user: users.find(user => user.id === transaction.user_id)
+      }))
+
+      return successList(transactionsWithUsers, 'Transações listadas com sucesso (visão staff)')
+    } else {
+      // Usuário comum vê apenas suas próprias transações
+      let query = authed
+        .from('transactions')
+        .select(`
+          *,
+          category:categories(*)
+        `)
+        .eq('user_id', user.id)
+        .order('date', { ascending: false })
+        .order('created_at', { ascending: false })
+        .range(offset, offset + limit - 1)
+
+      if (startDate) query = query.gte('date', startDate)
+      if (endDate) query = query.lte('date', endDate)
+      if (type) query = query.eq('type', type)
+      if (categoryId) query = query.eq('category_id', categoryId)
+
+      const { data: transactions, error: transactionsError } = await query
+
+      if (transactionsError) throw new HttpError(400, transactionsError.message)
+
+      // Buscar dados do usuário atual
+      const { data: userInfo, error: userError } = await authed
+        .from('users')
+        .select('id, email, full_name, is_staff')
+        .eq('id', user.id)
+        .single()
+
+      if (userError) throw new HttpError(400, userError.message)
+
+      // Combinar dados das transações com dados do usuário
+      const transactionsWithUsers = transactions.map(transaction => ({
+        ...transaction,
+        user: userInfo
+      }))
+
+      return successList(transactionsWithUsers, 'Transações listadas com sucesso')
+    }
+  },
+
+  // GET /transactions/:id - Buscar transação por ID
+  async getTransaction({ authed, req }: Ctx) {
+    const user = await requireAuth(authed)
+    const url = new URL(req.url)
+    const transactionId = url.pathname.split('/').pop()
+
+    if (!transactionId) {
+      throw new HttpError(400, 'ID da transação é obrigatório')
+    }
+
+    // Verificar se o usuário é staff
+    const { data: userData, error: userError } = await authed
+      .from('users')
+      .select('is_staff')
+      .eq('id', user.id)
+      .single()
+
+    if (userError) throw new HttpError(400, userError.message)
+
+    let transactionQuery
+    if (userData?.is_staff) {
+      // Staff pode buscar qualquer transação
+      transactionQuery = admin
+        .from('transactions')
+        .select(`
+          *,
+          category:categories(*)
+        `)
+        .eq('id', transactionId)
+        .single()
+    } else {
+      // Usuário comum só pode buscar suas próprias transações
+      transactionQuery = authed
+        .from('transactions')
+        .select(`
+          *,
+          category:categories(*)
+        `)
+        .eq('id', transactionId)
+        .eq('user_id', user.id)
+        .single()
+    }
+
+    const { data: transaction, error: transactionError } = await transactionQuery
+
+    if (transactionError || !transaction) {
+      throw new HttpError(404, 'Transação não encontrada')
+    }
+
+    // Buscar dados do usuário proprietário
+    const { data: userInfo, error: userInfoError } = await admin
+      .from('users')
+      .select('id, email, full_name, is_staff')
+      .eq('id', transaction.user_id)
+      .single()
+
+    if (userInfoError) throw new HttpError(400, userInfoError.message)
+
+    const transactionWithUser = {
+      ...transaction,
+      user: userInfo
+    }
+
+    return successItem(transactionWithUser, 'Transação encontrada com sucesso')
   },
 
   // POST /transactions - Criar transação
@@ -362,13 +729,33 @@ serve(async (req) => {
       return await handlers.categories({ req, authed, authHeader })
     }
 
+    if (req.method === 'GET' && (path.startsWith('/categories/') || path.startsWith('/cashflow/categories/'))) {
+      return await handlers.getCategory({ req, authed, authHeader })
+    }
+
     if (req.method === 'POST' && (path === '/categories' || path === '/cashflow/categories')) {
       return await handlers.createCategory({ req, authed, authHeader })
+    }
+
+    if (req.method === 'DELETE' && (path.startsWith('/categories/') || path.startsWith('/cashflow/categories/'))) {
+      return await handlers.deleteCategory({ req, authed, authHeader })
+    }
+
+    if (req.method === 'PUT' && (path.startsWith('/categories/') || path.startsWith('/cashflow/categories/'))) {
+      return await handlers.updateCategory({ req, authed, authHeader })
+    }
+
+    if (req.method === 'PATCH' && (path.startsWith('/categories/') || path.startsWith('/cashflow/categories/'))) {
+      return await handlers.updateCategory({ req, authed, authHeader })
     }
 
     // Transactions endpoints
     if (req.method === 'GET' && (path === '/transactions' || path === '/cashflow/transactions')) {
       return await handlers.transactions({ req, authed, authHeader })
+    }
+
+    if (req.method === 'GET' && (path.startsWith('/transactions/') || path.startsWith('/cashflow/transactions/'))) {
+      return await handlers.getTransaction({ req, authed, authHeader })
     }
 
     if (req.method === 'POST' && (path === '/transactions' || path === '/cashflow/transactions')) {

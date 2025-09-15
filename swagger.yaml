@@ -11,6 +11,161 @@ servers:
     description: Production server
 
 paths:
+  /users:
+    get:
+      tags: [Users]
+      summary: Listar usuários
+      description: |
+        Retorna usuários baseado no tipo de usuário logado:
+        - **Usuários comuns**: Veem apenas seu próprio perfil
+        - **Usuários staff (is_staff=true)**: Veem todos os usuários do sistema
+        
+        A resposta inclui informações completas do perfil do usuário.
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Lista de usuários (comportamento varia conforme tipo de usuário)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UsersResponse"
+              examples:
+                user_response:
+                  summary: Resposta para usuário comum
+                  value:
+                    user:
+                      id: "123e4567-e89b-12d3-a456-426614174001"
+                      email: "user@example.com"
+                      full_name: "João Silva"
+                      username: "joao.silva"
+                      avatar_url: "https://example.com/avatar.jpg"
+                      bio: "Desenvolvedor"
+                      phone: "+5511999999999"
+                      date_of_birth: "1990-01-01"
+                      location: "São Paulo, SP"
+                      website: "https://joao.dev"
+                      is_staff: false
+                      is_verified: true
+                      is_active: true
+                      preferences: {}
+                      created_at: "2024-01-01T00:00:00Z"
+                      updated_at: "2024-01-01T00:00:00Z"
+                    is_staff: false
+                staff_response:
+                  summary: Resposta para usuário staff
+                  value:
+                    users:
+                      - id: "123e4567-e89b-12d3-a456-426614174001"
+                        email: "user@example.com"
+                        full_name: "João Silva"
+                        username: "joao.silva"
+                        avatar_url: "https://example.com/avatar.jpg"
+                        bio: "Desenvolvedor"
+                        phone: "+5511999999999"
+                        date_of_birth: "1990-01-01"
+                        location: "São Paulo, SP"
+                        website: "https://joao.dev"
+                        is_staff: false
+                        is_verified: true
+                        is_active: true
+                        preferences: {}
+                        created_at: "2024-01-01T00:00:00Z"
+                        updated_at: "2024-01-01T00:00:00Z"
+                      - id: "123e4567-e89b-12d3-a456-426614174002"
+                        email: "admin@example.com"
+                        full_name: "Maria Admin"
+                        username: "maria.admin"
+                        avatar_url: "https://example.com/admin-avatar.jpg"
+                        bio: "Administradora"
+                        phone: "+5511888888888"
+                        date_of_birth: "1985-05-15"
+                        location: "Rio de Janeiro, RJ"
+                        website: "https://maria.admin"
+                        is_staff: true
+                        is_verified: true
+                        is_active: true
+                        preferences: {}
+                        created_at: "2024-01-01T00:00:00Z"
+                        updated_at: "2024-01-01T00:00:00Z"
+                    is_staff: true
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+    post:
+      tags: [Users]
+      summary: Criar usuário
+      description: |
+        Cria um novo usuário no sistema. Este endpoint é público e não requer autenticação.
+        
+        O usuário é criado tanto no sistema de autenticação do Supabase quanto na tabela de perfis.
+        O email será automaticamente confirmado.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserCreateRequest"
+      responses:
+        "200":
+          description: Usuário criado com sucesso
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserCreateResponse"
+        "400":
+          description: Erro na criação do usuário
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+    put:
+      tags: [Users]
+      summary: Atualizar usuário
+      description: |
+        Atualiza dados de um usuário baseado nas permissões:
+        - **Usuários comuns**: Podem atualizar apenas seu próprio perfil
+        - **Usuários staff (is_staff=true)**: Podem atualizar qualquer usuário
+        
+        O campo `is_staff` é removido automaticamente da atualização por segurança.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserUpdateRequest"
+      responses:
+        "200":
+          description: Usuário atualizado com sucesso
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserProfile"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: Permissões insuficientes
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: Insufficient permissions
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
   /auth/me:
     get:
       tags: [Auth]
@@ -62,16 +217,75 @@ paths:
     get:
       tags: [Cashflow]
       summary: Listar categorias
-      description: Retorna todas as categorias do usuario logado. Cada usuario so pode ver suas proprias categorias.
+      description: |
+        Retorna categorias baseado no tipo de usuário:
+        - **Usuários comuns**: Veem apenas suas próprias categorias
+        - **Usuários staff (is_staff=true)**: Veem todas as categorias de todos os usuários com dados do proprietário
+        
+        Cada categoria inclui informações do usuário proprietário (id, email, full_name, is_staff).
       security:
         - BearerAuth: []
       responses:
         "200":
-          description: Lista de categorias do usuario
+          description: Lista de categorias (comportamento varia conforme tipo de usuário)
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/CategoriesResponse"
+              examples:
+                user_response:
+                  summary: Resposta para usuário comum
+                  value:
+                    success: true
+                    data:
+                      - id: "123e4567-e89b-12d3-a456-426614174000"
+                        name: "Salário"
+                        type: "income"
+                        color: "#10B981"
+                        icon: "💼"
+                        user_id: "123e4567-e89b-12d3-a456-426614174001"
+                        created_at: "2024-01-01T00:00:00Z"
+                        updated_at: "2024-01-01T00:00:00Z"
+                        user:
+                          id: "123e4567-e89b-12d3-a456-426614174001"
+                          email: "user@example.com"
+                          full_name: "João Silva"
+                          is_staff: false
+                    count: 1
+                    message: "Categorias listadas com sucesso"
+                staff_response:
+                  summary: Resposta para usuário staff
+                  value:
+                    success: true
+                    data:
+                      - id: "123e4567-e89b-12d3-a456-426614174000"
+                        name: "Salário"
+                        type: "income"
+                        color: "#10B981"
+                        icon: "💼"
+                        user_id: "123e4567-e89b-12d3-a456-426614174001"
+                        created_at: "2024-01-01T00:00:00Z"
+                        updated_at: "2024-01-01T00:00:00Z"
+                        user:
+                          id: "123e4567-e89b-12d3-a456-426614174001"
+                          email: "user@example.com"
+                          full_name: "João Silva"
+                          is_staff: false
+                      - id: "123e4567-e89b-12d3-a456-426614174002"
+                        name: "Freelance"
+                        type: "income"
+                        color: "#3B82F6"
+                        icon: "💻"
+                        user_id: "123e4567-e89b-12d3-a456-426614174003"
+                        created_at: "2024-01-01T00:00:00Z"
+                        updated_at: "2024-01-01T00:00:00Z"
+                        user:
+                          id: "123e4567-e89b-12d3-a456-426614174003"
+                          email: "maria@example.com"
+                          full_name: "Maria Santos"
+                          is_staff: true
+                    count: 2
+                    message: "Categorias listadas com sucesso (visão staff)"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "500":
@@ -102,11 +316,338 @@ paths:
         "500":
           $ref: "#/components/responses/InternalServerError"
 
+  /cashflow/categories/{id}:
+    get:
+      tags: [Cashflow]
+      summary: Buscar categoria por ID
+      description: |
+        Retorna uma categoria específica baseado no tipo de usuário:
+        - **Usuários comuns**: Podem buscar apenas suas próprias categorias
+        - **Usuários staff (is_staff=true)**: Podem buscar qualquer categoria
+        
+        A resposta inclui informações do usuário proprietário (id, email, full_name, is_staff).
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: ID da categoria
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Categoria encontrada com sucesso
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CategoryResponse"
+              examples:
+                user_response:
+                  summary: Resposta para usuário comum
+                  value:
+                    success: true
+                    data:
+                      id: "123e4567-e89b-12d3-a456-426614174000"
+                      name: "Salário"
+                      type: "income"
+                      color: "#10B981"
+                      icon: "💼"
+                      user_id: "123e4567-e89b-12d3-a456-426614174001"
+                      created_at: "2024-01-01T00:00:00Z"
+                      updated_at: "2024-01-01T00:00:00Z"
+                      user:
+                        id: "123e4567-e89b-12d3-a456-426614174001"
+                        email: "user@example.com"
+                        full_name: "João Silva"
+                        is_staff: false
+                    message: "Categoria encontrada com sucesso"
+                staff_response:
+                  summary: Resposta para usuário staff
+                  value:
+                    success: true
+                    data:
+                      id: "123e4567-e89b-12d3-a456-426614174000"
+                      name: "Salário"
+                      type: "income"
+                      color: "#10B981"
+                      icon: "💼"
+                      user_id: "123e4567-e89b-12d3-a456-426614174001"
+                      created_at: "2024-01-01T00:00:00Z"
+                      updated_at: "2024-01-01T00:00:00Z"
+                      user:
+                        id: "123e4567-e89b-12d3-a456-426614174001"
+                        email: "user@example.com"
+                        full_name: "João Silva"
+                        is_staff: false
+                    message: "Categoria encontrada com sucesso"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: Categoria não encontrada
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+    delete:
+      tags: [Cashflow]
+      summary: Deletar categoria
+      description: Remove uma categoria. Nao e possivel deletar categorias que possuem transacoes associadas.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: ID da categoria
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Categoria deletada com sucesso
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeleteResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "400":
+          description: Categoria possui transacoes associadas
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  error:
+                    type: string
+                    example: Nao e possivel deletar categoria que possui transacoes associadas
+        "404":
+          description: Categoria nao encontrada
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+    put:
+      tags: [Cashflow]
+      summary: Atualizar categoria
+      description: Atualiza uma categoria existente. Pelo menos um campo deve ser fornecido para atualizacao.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: ID da categoria
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CategoryUpdateInput"
+      responses:
+        "200":
+          description: Categoria atualizada com sucesso
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CategoryResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "400":
+          description: Dados invalidos ou nenhum campo fornecido
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  error:
+                    type: string
+                    example: Pelo menos um campo deve ser fornecido para atualizacao
+        "404":
+          description: Categoria nao encontrada
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /cashflow/transactions/{id}:
+    get:
+      tags: [Cashflow]
+      summary: Buscar transação por ID
+      description: |
+        Retorna uma transação específica baseado no tipo de usuário:
+        - **Usuários comuns**: Podem buscar apenas suas próprias transações
+        - **Usuários staff (is_staff=true)**: Podem buscar qualquer transação
+        
+        A resposta inclui dados da categoria associada (se houver).
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: ID da transação
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Transação encontrada com sucesso
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TransactionResponse"
+              examples:
+                transaction_response:
+                  summary: Resposta com transação, categoria e usuário
+                  value:
+                    success: true
+                    data:
+                      id: "123e4567-e89b-12d3-a456-426614174000"
+                      user_id: "123e4567-e89b-12d3-a456-426614174001"
+                      category_id: "123e4567-e89b-12d3-a456-426614174002"
+                      type: "income"
+                      amount: 5000.00
+                      description: "Salário mensal"
+                      date: "2024-01-15"
+                      tags: ["trabalho", "salário"]
+                      notes: "Salário de janeiro"
+                      created_at: "2024-01-15T10:00:00Z"
+                      updated_at: "2024-01-15T10:00:00Z"
+                      category:
+                        id: "123e4567-e89b-12d3-a456-426614174002"
+                        name: "Salário"
+                        type: "income"
+                        color: "#10B981"
+                        icon: "💼"
+                        user_id: "123e4567-e89b-12d3-a456-426614174001"
+                        created_at: "2024-01-01T00:00:00Z"
+                        updated_at: "2024-01-01T00:00:00Z"
+                      user:
+                        id: "123e4567-e89b-12d3-a456-426614174001"
+                        email: "user@example.com"
+                        full_name: "João Silva"
+                        is_staff: false
+                    message: "Transação encontrada com sucesso"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: Transação não encontrada
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+    put:
+      tags: [Cashflow]
+      summary: Atualizar transação
+      description: Atualiza uma transação existente. Se category_id for fornecido, deve ser uma categoria do proprio usuario.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: ID da transação
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TransactionUpdateInput"
+      responses:
+        "200":
+          description: Transação atualizada com sucesso
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TransactionResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "400":
+          description: Dados invalidos ou categoria nao pertence ao usuario
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  error:
+                    type: string
+                    example: Categoria nao encontrada ou nao pertence ao usuario
+        "404":
+          description: Transação nao encontrada
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+    delete:
+      tags: [Cashflow]
+      summary: Deletar transação
+      description: Remove uma transação
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: ID da transação
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Transação deletada com sucesso
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeleteResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: Transação nao encontrada
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
   /cashflow/transactions:
     get:
       tags: [Cashflow]
       summary: Listar transacoes
-      description: Retorna transacoes do usuario com filtros opcionais
+      description: |
+        Retorna transações baseado no tipo de usuário:
+        - **Usuários comuns**: Veem apenas suas próprias transações
+        - **Usuários staff (is_staff=true)**: Veem todas as transações de todos os usuários
+        
+        Suporta filtros opcionais por data, tipo, categoria, paginação, etc.
       security:
         - BearerAuth: []
       parameters:
@@ -142,11 +683,96 @@ paths:
             default: 0
       responses:
         "200":
-          description: Lista de transacoes
+          description: Lista de transações (comportamento varia conforme tipo de usuário)
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/TransactionsResponse"
+              examples:
+                user_response:
+                  summary: Resposta para usuário comum
+                  value:
+                    success: true
+                    data:
+                      - id: "123e4567-e89b-12d3-a456-426614174000"
+                        user_id: "123e4567-e89b-12d3-a456-426614174001"
+                        category_id: "123e4567-e89b-12d3-a456-426614174002"
+                        type: "income"
+                        amount: 5000.00
+                        description: "Salário mensal"
+                        date: "2024-01-15"
+                        tags: ["trabalho", "salário"]
+                        notes: "Salário de janeiro"
+                        created_at: "2024-01-15T10:00:00Z"
+                        updated_at: "2024-01-15T10:00:00Z"
+                        category:
+                          id: "123e4567-e89b-12d3-a456-426614174002"
+                          name: "Salário"
+                          type: "income"
+                          color: "#10B981"
+                          icon: "💼"
+                          user_id: "123e4567-e89b-12d3-a456-426614174001"
+                          created_at: "2024-01-01T00:00:00Z"
+                          updated_at: "2024-01-01T00:00:00Z"
+                        user:
+                          id: "123e4567-e89b-12d3-a456-426614174001"
+                          email: "user@example.com"
+                          full_name: "João Silva"
+                          is_staff: false
+                    count: 1
+                    message: "Transações listadas com sucesso"
+                staff_response:
+                  summary: Resposta para usuário staff
+                  value:
+                    success: true
+                    data:
+                      - id: "123e4567-e89b-12d3-a456-426614174000"
+                        user_id: "123e4567-e89b-12d3-a456-426614174001"
+                        category_id: "123e4567-e89b-12d3-a456-426614174002"
+                        type: "income"
+                        amount: 5000.00
+                        description: "Salário mensal"
+                        date: "2024-01-15"
+                        tags: ["trabalho", "salário"]
+                        notes: "Salário de janeiro"
+                        created_at: "2024-01-15T10:00:00Z"
+                        updated_at: "2024-01-15T10:00:00Z"
+                        category:
+                          id: "123e4567-e89b-12d3-a456-426614174002"
+                          name: "Salário"
+                          type: "income"
+                          color: "#10B981"
+                          icon: "💼"
+                          user_id: "123e4567-e89b-12d3-a456-426614174001"
+                          created_at: "2024-01-01T00:00:00Z"
+                          updated_at: "2024-01-01T00:00:00Z"
+                      - id: "123e4567-e89b-12d3-a456-426614174003"
+                        user_id: "123e4567-e89b-12d3-a456-426614174004"
+                        category_id: "123e4567-e89b-12d3-a456-426614174005"
+                        type: "expense"
+                        amount: 150.00
+                        description: "Almoço"
+                        date: "2024-01-15"
+                        tags: ["alimentação"]
+                        notes: "Almoço no restaurante"
+                        created_at: "2024-01-15T12:00:00Z"
+                        updated_at: "2024-01-15T12:00:00Z"
+                        category:
+                          id: "123e4567-e89b-12d3-a456-426614174005"
+                          name: "Alimentação"
+                          type: "expense"
+                          color: "#EF4444"
+                          icon: "🍽️"
+                          user_id: "123e4567-e89b-12d3-a456-426614174004"
+                          created_at: "2024-01-01T00:00:00Z"
+                          updated_at: "2024-01-01T00:00:00Z"
+                        user:
+                          id: "123e4567-e89b-12d3-a456-426614174004"
+                          email: "maria@example.com"
+                          full_name: "Maria Santos"
+                          is_staff: true
+                    count: 2
+                    message: "Transações listadas com sucesso (visão staff)"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "500":
@@ -185,89 +811,6 @@ paths:
                   error:
                     type: string
                     example: Categoria nao encontrada ou nao pertence ao usuario
-        "500":
-          $ref: "#/components/responses/InternalServerError"
-
-  /cashflow/transactions/{id}:
-    put:
-      tags: [Cashflow]
-      summary: Atualizar transacao
-      description: Atualiza uma transacao existente. Se category_id for fornecido, deve ser uma categoria do proprio usuario.
-      security:
-        - BearerAuth: []
-      parameters:
-        - name: id
-          in: path
-          required: true
-          description: ID da transacao
-          schema:
-            type: string
-            format: uuid
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/TransactionUpdateInput"
-      responses:
-        "200":
-          description: Transacao atualizada com sucesso
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/TransactionResponse"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "400":
-          description: Dados invalidos ou categoria nao pertence ao usuario
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  success:
-                    type: boolean
-                    example: false
-                  error:
-                    type: string
-                    example: Categoria nao encontrada ou nao pertence ao usuario
-        "404":
-          description: Transacao nao encontrada
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "500":
-          $ref: "#/components/responses/InternalServerError"
-    delete:
-      tags: [Cashflow]
-      summary: Deletar transacao
-      description: Remove uma transacao
-      security:
-        - BearerAuth: []
-      parameters:
-        - name: id
-          in: path
-          required: true
-          description: ID da transacao
-          schema:
-            type: string
-            format: uuid
-      responses:
-        "200":
-          description: Transacao deletada com sucesso
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/DeleteResponse"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "404":
-          description: Transacao nao encontrada
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
         "500":
           $ref: "#/components/responses/InternalServerError"
 
@@ -312,6 +855,121 @@ components:
       description: JWT token do Supabase Auth
 
   schemas:
+    UserCreateRequest:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+          description: Email do usuário
+        password:
+          type: string
+          description: Senha do usuário
+        full_name:
+          type: string
+          description: Nome completo do usuário
+        username:
+          type: string
+          description: Nome de usuário único
+        avatar_url:
+          type: string
+          format: uri
+          description: URL do avatar
+        bio:
+          type: string
+          description: Biografia do usuário
+        phone:
+          type: string
+          description: Número de telefone
+        date_of_birth:
+          type: string
+          format: date
+          description: Data de nascimento
+        location:
+          type: string
+          description: Localização
+        website:
+          type: string
+          format: uri
+          description: Website pessoal
+        preferences:
+          type: object
+          description: Preferências do usuário em formato JSON
+          default: {}
+      required:
+        - email
+        - password
+        - full_name
+
+    UserCreateResponse:
+      type: object
+      properties:
+        message:
+          type: string
+          description: Mensagem de sucesso
+          example: "User created successfully"
+        user:
+          $ref: "#/components/schemas/UserProfile"
+
+    UserUpdateRequest:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: ID do usuário a ser atualizado (opcional, usa o usuário logado se não fornecido)
+        email:
+          type: string
+          format: email
+          description: Email do usuário
+        full_name:
+          type: string
+          description: Nome completo do usuário
+        username:
+          type: string
+          description: Nome de usuário único
+        avatar_url:
+          type: string
+          format: uri
+          description: URL do avatar
+        bio:
+          type: string
+          description: Biografia do usuário
+        phone:
+          type: string
+          description: Número de telefone
+        date_of_birth:
+          type: string
+          format: date
+          description: Data de nascimento
+        location:
+          type: string
+          description: Localização
+        website:
+          type: string
+          format: uri
+          description: Website pessoal
+        preferences:
+          type: object
+          description: Preferências do usuário em formato JSON
+      description: Pelo menos um campo deve ser fornecido para atualização. O campo is_staff é removido automaticamente por segurança.
+
+    UsersResponse:
+      type: object
+      properties:
+        user:
+          $ref: "#/components/schemas/UserProfile"
+          description: Perfil do usuário (quando is_staff = false)
+        users:
+          type: array
+          items:
+            $ref: "#/components/schemas/UserProfile"
+          description: Lista de todos os usuários (quando is_staff = true)
+        is_staff:
+          type: boolean
+          description: Indica se o usuário logado tem privilégios de staff
+      description: Resposta varia conforme o tipo de usuário logado
+
     AuthLoginRequest:
       type: object
       properties:
@@ -489,11 +1147,37 @@ components:
           type: string
           format: date-time
           description: Data da ultima atualizacao
+        user:
+          $ref: "#/components/schemas/CategoryUser"
       required:
         - id
         - name
         - type
         - user_id
+        - user
+
+    CategoryUser:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: ID do usuario proprietario
+        email:
+          type: string
+          format: email
+          description: Email do usuario proprietario
+        full_name:
+          type: string
+          description: Nome completo do usuario proprietario
+        is_staff:
+          type: boolean
+          description: Se o usuario proprietario tem privilegios de staff
+      required:
+        - id
+        - email
+        - full_name
+        - is_staff
 
     CategoryInput:
       type: object
@@ -516,6 +1200,24 @@ components:
       required:
         - name
         - type
+
+    CategoryUpdateInput:
+      type: object
+      properties:
+        name:
+          type: string
+          description: Nome da categoria
+        type:
+          type: string
+          enum: [income, expense]
+          description: Tipo da categoria
+        color:
+          type: string
+          description: Cor da categoria
+        icon:
+          type: string
+          description: Icone da categoria
+      description: Pelo menos um campo deve ser fornecido para atualizacao
 
     CategoryResponse:
       type: object
@@ -549,6 +1251,9 @@ components:
         message:
           type: string
           description: Mensagem descritiva da operacao
+          enum: 
+            - "Categorias listadas com sucesso"
+            - "Categorias listadas com sucesso (visão staff)"
           example: "Categorias listadas com sucesso"
 
     Transaction:
@@ -601,12 +1306,15 @@ components:
           description: Data da ultima atualizacao
         category:
           $ref: "#/components/schemas/Category"
+        user:
+          $ref: "#/components/schemas/CategoryUser"
       required:
         - id
         - user_id
         - type
         - amount
         - description
+        - user
 
     TransactionInput:
       type: object
@@ -708,7 +1416,10 @@ components:
         message:
           type: string
           description: Mensagem descritiva da operacao
-          example: "Transacoes listadas com sucesso"
+          enum: 
+            - "Transações listadas com sucesso"
+            - "Transações listadas com sucesso (visão staff)"
+          example: "Transações listadas com sucesso"
 
     SummaryResponse:
       type: object
@@ -806,5 +1517,7 @@ components:
 tags:
   - name: Auth
     description: Operacoes de autenticacao (login, dados do usuario logado)
+  - name: Users
+    description: Gerenciamento de usuários (criar, listar, atualizar perfis). Usuários staff podem gerenciar todos os usuários.
   - name: Cashflow
     description: Sistema de controle de caixa pessoal (receitas, despesas, categorias). Cada usuario tem isolamento completo de seus dados.
