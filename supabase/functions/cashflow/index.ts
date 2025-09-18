@@ -388,6 +388,7 @@ const handlers: Record<
     const endDate = url.searchParams.get('end_date')
     const type = url.searchParams.get('type')
     const categoryId = url.searchParams.get('category_id')
+    const isPaid = url.searchParams.get('is_paid')
     const limit = parseInt(url.searchParams.get('limit') || '50')
     const offset = parseInt(url.searchParams.get('offset') || '0')
 
@@ -422,6 +423,10 @@ const handlers: Record<
       if (endDate) filteredTransactions = filteredTransactions.filter(t => t.date <= endDate)
       if (type) filteredTransactions = filteredTransactions.filter(t => t.type === type)
       if (categoryId) filteredTransactions = filteredTransactions.filter(t => t.category_id === categoryId)
+      if (isPaid !== null) {
+        const paidStatus = isPaid === 'true'
+        filteredTransactions = filteredTransactions.filter(t => t.is_paid === paidStatus)
+      }
 
       // Buscar dados dos usuários para cada transação
       const userIds = [...new Set(filteredTransactions.map(t => t.user_id))]
@@ -456,6 +461,10 @@ const handlers: Record<
       if (endDate) query = query.lte('date', endDate)
       if (type) query = query.eq('type', type)
       if (categoryId) query = query.eq('category_id', categoryId)
+      if (isPaid !== null) {
+        const paidStatus = isPaid === 'true'
+        query = query.eq('is_paid', paidStatus)
+      }
 
       const { data: transactions, error: transactionsError } = await query
 
@@ -549,7 +558,7 @@ const handlers: Record<
   // POST /transactions - Criar transação
   async createTransaction({ authed, req }: Ctx) {
     const user = await requireAuth(authed)
-    const { type, amount, description, date, category_id, tags, notes } = await readJSON<{
+    const { type, amount, description, date, category_id, tags, notes, is_paid } = await readJSON<{
       type?: 'income' | 'expense'
       amount?: number
       description?: string
@@ -557,6 +566,7 @@ const handlers: Record<
       category_id?: string
       tags?: string[]
       notes?: string
+      is_paid?: boolean
     }>(req)
 
     requireFields({ type, amount, description }, ['type', 'amount', 'description'])
@@ -586,6 +596,8 @@ const handlers: Record<
         category_id: category_id || null,
         tags: tags || [],
         notes: notes || null,
+        is_paid: is_paid !== undefined ? is_paid : false, // Default to unpaid
+        paid_at: is_paid === true ? new Date().toISOString() : null,
       })
       .select(`
         *,
@@ -606,7 +618,7 @@ const handlers: Record<
 
     if (!transactionId) throw new HttpError(400, 'ID da transação é obrigatório')
 
-    const { type, amount, description, date, category_id, tags, notes } = await readJSON<{
+    const { type, amount, description, date, category_id, tags, notes, is_paid } = await readJSON<{
       type?: 'income' | 'expense'
       amount?: number
       description?: string
@@ -614,6 +626,7 @@ const handlers: Record<
       category_id?: string
       tags?: string[]
       notes?: string
+      is_paid?: boolean
     }>(req)
 
     // Validar se a categoria pertence ao usuário (se fornecida)
@@ -630,17 +643,22 @@ const handlers: Record<
       }
     }
 
+    const updateData: any = {}
+    if (type) updateData.type = type
+    if (amount) updateData.amount = amount
+    if (description) updateData.description = description
+    if (date) updateData.date = date
+    if (category_id !== undefined) updateData.category_id = category_id
+    if (tags) updateData.tags = tags
+    if (notes !== undefined) updateData.notes = notes
+    if (is_paid !== undefined) {
+      updateData.is_paid = is_paid
+      updateData.paid_at = is_paid ? new Date().toISOString() : null
+    }
+
     const { data, error } = await authed
       .from('transactions')
-      .update({
-        ...(type && { type }),
-        ...(amount && { amount }),
-        ...(description && { description }),
-        ...(date && { date }),
-        ...(category_id !== undefined && { category_id }),
-        ...(tags && { tags }),
-        ...(notes !== undefined && { notes }),
-      })
+      .update(updateData)
       .eq('id', transactionId)
       .eq('user_id', user.id)
       .select(`
@@ -682,7 +700,7 @@ const handlers: Record<
 
     let query = authed
       .from('transactions')
-      .select('type, amount, date')
+      .select('type, amount, date, is_paid')
       .eq('user_id', user.id)
 
     if (startDate) query = query.gte('date', startDate)
@@ -695,15 +713,184 @@ const handlers: Record<
     const summary = data.reduce((acc, transaction) => {
       if (transaction.type === 'income') {
         acc.totalIncome += parseFloat(transaction.amount.toString())
+        if (transaction.is_paid) {
+          acc.paidIncome += parseFloat(transaction.amount.toString())
+        } else {
+          acc.pendingIncome += parseFloat(transaction.amount.toString())
+        }
       } else {
         acc.totalExpenses += parseFloat(transaction.amount.toString())
+        if (transaction.is_paid) {
+          acc.paidExpenses += parseFloat(transaction.amount.toString())
+        } else {
+          acc.pendingExpenses += parseFloat(transaction.amount.toString())
+        }
       }
       return acc
-    }, { totalIncome: 0, totalExpenses: 0 })
+    }, { 
+      totalIncome: 0, 
+      totalExpenses: 0, 
+      paidIncome: 0, 
+      pendingIncome: 0, 
+      paidExpenses: 0, 
+      pendingExpenses: 0 
+    })
 
     summary.balance = summary.totalIncome - summary.totalExpenses
+    summary.paidBalance = summary.paidIncome - summary.paidExpenses
+    summary.pendingBalance = summary.pendingIncome - summary.pendingExpenses
 
     return success(summary, 'Resumo financeiro calculado com sucesso')
+  },
+
+  // PATCH /transactions/:id/pay - Marcar transação como paga
+  async markAsPaid({ authed, req }: Ctx) {
+    const user = await requireAuth(authed)
+    const url = new URL(req.url)
+    const pathParts = url.pathname.split('/')
+    const transactionId = pathParts[pathParts.length - 2] // /transactions/:id/pay
+
+    if (!transactionId) {
+      throw new HttpError(400, 'ID da transação é obrigatório')
+    }
+
+    // Verificar se a transação existe e pertence ao usuário
+    const { data: transaction, error: fetchError } = await authed
+      .from('transactions')
+      .select('id, is_paid')
+      .eq('id', transactionId)
+      .eq('user_id', user.id)
+      .single()
+
+    if (fetchError || !transaction) {
+      throw new HttpError(404, 'Transação não encontrada')
+    }
+
+    if (transaction.is_paid) {
+      throw new HttpError(400, 'Transação já está marcada como paga')
+    }
+
+    // Marcar como paga
+    const { data, error: updateError } = await authed
+      .from('transactions')
+      .update({
+        is_paid: true,
+        paid_at: new Date().toISOString()
+      })
+      .eq('id', transactionId)
+      .eq('user_id', user.id)
+      .select(`
+        *,
+        category:categories(*)
+      `)
+      .single()
+
+    if (updateError) {
+      throw new HttpError(400, updateError.message)
+    }
+
+    return successItem(data, 'Transação marcada como paga com sucesso')
+  },
+
+  // PATCH /transactions/:id/unpay - Marcar transação como não paga
+  async markAsUnpaid({ authed, req }: Ctx) {
+    const user = await requireAuth(authed)
+    const url = new URL(req.url)
+    const pathParts = url.pathname.split('/')
+    const transactionId = pathParts[pathParts.length - 2] // /transactions/:id/unpay
+
+    if (!transactionId) {
+      throw new HttpError(400, 'ID da transação é obrigatório')
+    }
+
+    // Verificar se a transação existe e pertence ao usuário
+    const { data: transaction, error: fetchError } = await authed
+      .from('transactions')
+      .select('id, is_paid, user_id')
+      .eq('id', transactionId)
+      .eq('user_id', user.id)
+      .single()
+
+    if (fetchError || !transaction) {
+      throw new HttpError(404, 'Transação não encontrada')
+    }
+
+    if (!transaction.is_paid) {
+      throw new HttpError(400, 'Transação já está marcada como não paga')
+    }
+
+    // Marcar como não paga
+    const { data, error: updateError } = await authed
+      .from('transactions')
+      .update({
+        is_paid: false,
+        paid_at: null
+      })
+      .eq('id', transactionId)
+      .eq('user_id', user.id)
+      .select(`
+        *,
+        category:categories(*)
+      `)
+      .single()
+
+    if (updateError) {
+      throw new HttpError(400, updateError.message)
+    }
+
+    return successItem(data, 'Transação marcada como não paga com sucesso')
+  },
+
+  // PATCH /transactions/:id/toggle-payment - Alternar status de pagamento
+  async togglePaymentStatus({ authed, req }: Ctx) {
+    const user = await requireAuth(authed)
+    const url = new URL(req.url)
+    const pathParts = url.pathname.split('/')
+    const transactionId = pathParts[pathParts.length - 2] // /transactions/:id/toggle-payment
+
+    if (!transactionId) {
+      throw new HttpError(400, 'ID da transação é obrigatório')
+    }
+
+    // Verificar se a transação existe e pertence ao usuário
+    const { data: transaction, error: fetchError } = await authed
+      .from('transactions')
+      .select('id, is_paid')
+      .eq('id', transactionId)
+      .eq('user_id', user.id)
+      .single()
+
+    if (fetchError || !transaction) {
+      throw new HttpError(404, 'Transação não encontrada')
+    }
+
+    // Alternar status de pagamento
+    const newStatus = !transaction.is_paid
+    const updateData = {
+      is_paid: newStatus,
+      paid_at: newStatus ? new Date().toISOString() : null
+    }
+
+    const { data, error: updateError } = await authed
+      .from('transactions')
+      .update(updateData)
+      .eq('id', transactionId)
+      .eq('user_id', user.id)
+      .select(`
+        *,
+        category:categories(*)
+      `)
+      .single()
+
+    if (updateError) {
+      throw new HttpError(400, updateError.message)
+    }
+
+    const message = newStatus 
+      ? 'Transação marcada como paga com sucesso'
+      : 'Transação marcada como não paga com sucesso'
+
+    return successItem(data, message)
   },
 }
 
@@ -773,6 +960,19 @@ serve(async (req) => {
     // Summary endpoint
     if (req.method === 'GET' && (path === '/summary' || path === '/cashflow/summary')) {
       return await handlers.summary({ req, authed, authHeader })
+    }
+
+    // Payment status endpoints
+    if (req.method === 'PATCH' && (path.match(/^\/transactions\/[^\/]+\/pay$/) || path.match(/^\/cashflow\/transactions\/[^\/]+\/pay$/))) {
+      return await handlers.markAsPaid({ req, authed, authHeader })
+    }
+
+    if (req.method === 'PATCH' && (path.match(/^\/transactions\/[^\/]+\/unpay$/) || path.match(/^\/cashflow\/transactions\/[^\/]+\/unpay$/))) {
+      return await handlers.markAsUnpaid({ req, authed, authHeader })
+    }
+
+    if (req.method === 'PATCH' && (path.match(/^\/transactions\/[^\/]+\/toggle-payment$/) || path.match(/^\/cashflow\/transactions\/[^\/]+\/toggle-payment$/))) {
+      return await handlers.togglePaymentStatus({ req, authed, authHeader })
     }
 
     return json({ error: `Endpoint não encontrado: ${req.method} ${path}` }, 404)

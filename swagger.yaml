@@ -895,6 +895,84 @@ paths:
         "500":
           $ref: "#/components/responses/InternalServerError"
 
+  /cashflow/transactions/{id}/pay:
+    patch:
+      tags: [Cashflow]
+      summary: Marcar transação como paga
+      description: Marca uma transação específica como paga
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: ID da transação
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Transação marcada como paga com sucesso
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TransactionResponse"
+        "400":
+          description: Transação já está marcada como paga
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: "Transação já está marcada como paga"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /cashflow/transactions/{id}/unpay:
+    patch:
+      tags: [Cashflow]
+      summary: Marcar transação como não paga
+      description: Marca uma transação específica como não paga
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: ID da transação
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Transação marcada como não paga com sucesso
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TransactionResponse"
+        "400":
+          description: Transação já está marcada como não paga
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: "Transação já está marcada como não paga"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
   /cashflow/summary:
     get:
       tags: [Cashflow]
